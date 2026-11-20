@@ -34,13 +34,45 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Code signing turns on automatically once these repository secrets exist (see SIGNING.md).
+      SIGNING_ENABLED: ${{ secrets.AZURE_CLIENT_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt pyinstaller pillow
-      - run: pyinstaller --noconfirm --onefile --windowed --name SlowerThanSardines --icon assets/icon.png --exclude-module pkg_resources main.py
+      - run: pip install -r requirements.txt pillow
+      - name: Install PyInstaller
+        if: runner.os != 'Windows'
+        run: pip install pyinstaller
+      - name: Install PyInstaller with a freshly compiled bootloader (fewer antivirus false positives)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: '1'
+        run: pip install --no-binary pyinstaller pyinstaller
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: pyinstaller --noconfirm --onefile --windowed --name SlowerThanSardines --icon assets/icon.png --version-file version_info.txt --exclude-module pkg_resources main.py
+      - name: Build
+        if: runner.os != 'Windows'
+        run: pyinstaller --noconfirm --onefile --windowed --name SlowerThanSardines --icon assets/icon.png --exclude-module pkg_resources main.py
+      - name: Code-sign the Windows exe (Azure Artifact Signing)
+        if: runner.os == 'Windows' && env.SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
       - name: Package
         shell: bash
         run: |
@@ -76,7 +108,7 @@ jobs:
           files: artifacts/*
           body: |
             **Windows:** download `SlowerThanSardines-Windows.exe` and double-click it. No install needed.
-            (Windows may say "Windows protected your PC" because the game isn't code-signed: click **More info → Run anyway**.)
+            If Windows shows "Windows protected your PC", click **More info → Run anyway**. (This goes away once the game is code-signed and has built up download reputation.)
 
             **macOS:** download the macOS zip, unzip, right-click the app → Open.
             **Linux:** download the Linux tarball, extract, run `./SlowerThanSardines`.

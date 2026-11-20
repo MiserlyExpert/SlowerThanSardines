@@ -1,7 +1,7 @@
 """Global constants."""
 
 TITLE = "Slower Than Sardines"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 # Logical resolution. The window is integer-scaled up from this, so every
 # pixel stays a crisp, chunky pixel.
