@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag to publish (e.g. v0.1.0). Leave empty to just build.'
+        required: false
+        default: ''
 
 jobs:
   test:
@@ -54,7 +59,7 @@ jobs:
 
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,6 +70,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version || github.ref_name }}
+          name: Slower Than Sardines ${{ inputs.version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: artifacts/*
           body: |
             **Windows:** download `SlowerThanSardines-Windows.exe` and double-click it. No install needed.
