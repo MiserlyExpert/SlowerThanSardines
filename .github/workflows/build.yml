@@ -49,9 +49,13 @@ jobs:
       - name: Install PyInstaller with a freshly compiled bootloader (fewer antivirus false positives)
         if: runner.os == 'Windows'
         shell: bash
-        env:
-          PYINSTALLER_COMPILE_BOOTLOADER: '1'
-        run: pip install --no-binary pyinstaller pyinstaller
+        run: |
+          git clone --depth 1 --branch v6.19.0 https://github.com/pyinstaller/pyinstaller.git "$RUNNER_TEMP/pyinstaller"
+          cd "$RUNNER_TEMP/pyinstaller/bootloader"
+          python ./waf distclean all --target-arch=64bit
+          cd ..
+          pip install .
+          ls -la PyInstaller/bootloader/Windows-64bit-intel/
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: pyinstaller --noconfirm --onefile --windowed --name SlowerThanSardines --icon assets/icon.png --version-file version_info.txt --exclude-module pkg_resources main.py
