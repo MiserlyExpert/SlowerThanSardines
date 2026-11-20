@@ -52,7 +52,11 @@ Grab the latest build from the **[Releases page](https://github.com/MiserlyExper
 
 ## Running from source
 
-Requires Python 3.10+.
+**Windows, easiest:** install Python from https://www.python.org/downloads/ (tick **"Add python.exe
+to PATH"**), then double-click **`Play.bat`** in this folder. The first run takes about a minute to
+set things up; after that it starts straight away.
+
+**Any OS, by hand:** requires Python 3.10+.
 
 ```bash
 pip install -r requirements.txt
