@@ -1,7 +1,7 @@
 """Run state: resources, outcomes, loot, travel."""
 import random
 
-from . import data, events, model
+from . import data, events, model, profile
 from .config import MAX_CREW, MAX_WEAPONS
 from .sector import FLEET_STEP, Sector
 
@@ -12,25 +12,31 @@ class SafeDict(dict):
 
 
 class GameState:
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, ship_key='sardine', crew=None):
         self.seed = seed if seed is not None else random.randrange(1 << 30)
         self.rng = random.Random(self.seed)
-        self.ship = model.make_player_ship(self.rng)
-        self.doubloons = 30
-        self.rum = 12
-        self.balls = 6
+        self.ship_key = ship_key
+        d = data.SHIPS[ship_key]
+        self.ship = model.make_player_ship(self.rng, ship_key, crew)
+        self.doubloons = d['doubloons']
+        self.rum = d['rum']
+        self.balls = d['balls']
         self.cargo = []
         self.sector_idx = 0
         self.sector = Sector(0, self.rng)
         self.stats = dict(jumps=0, wins=0, doubloons=0, sea=1)
         self.cause = None
+        self.enemy = None
+        self.axes = False
         self.seen = set()
         self.pending = {}
 
     # ------------------------------------------------------------------
     @property
     def crew(self):
-        return [c for c in self.ship.crew if c.side == 'player' and c.alive]
+        away = [c for c in getattr(self, 'enemy', None).crew if c.side == 'player' and c.alive] \
+            if getattr(self, 'enemy', None) is not None else []
+        return [c for c in self.ship.crew if c.side == 'player' and c.alive] + away
 
     def has(self, cls):
         return any(c.cls == cls for c in self.crew)
@@ -110,6 +116,8 @@ class GameState:
             c = self.recruit(o['add_crew'])
             if c:
                 out.append((f"{c.name} the {c.title} joined!", 'good'))
+                for name in profile.record(max_drunks=sum(1 for x in self.crew if x.cls == 'drunk')):
+                    out.append((f"NEW SHIP UNLOCKED: {name}!", 'good'))
             else:
                 out.append(("No room for more crew", 'bad'))
         if 'weapon' in o:
@@ -127,7 +135,7 @@ class GameState:
                 out.append((f"{data.SYSTEMS[s.name]['title']} upgraded", 'good'))
         if 'fleet' in o:
             self.sector.fleet_x += o['fleet']
-            out.append(("The Black Tide gains on you" if o['fleet'] > 0 else "The Black Tide falls behind",
+            out.append(("The Armada gains on you" if o['fleet'] > 0 else "The Armada falls behind",
                         'bad' if o['fleet'] > 0 else 'good'))
         return out
 
@@ -158,7 +166,8 @@ class GameState:
         rng = self.rng
         base = 12 + 7 * self.sector_idx
         d = rng.randint(base, base + 12)
-        if enemy_key in ('tide', 'galleon'):
+        d = int(d * data.ENEMIES.get(enemy_key, {}).get('gold', 1.0))
+        if enemy_key in ('frigate', 'galleon'):
             d = int(d * 1.4)
         if how == 'win_crew':
             d = int(d * 1.5)
@@ -168,7 +177,7 @@ class GameState:
             o['rum'] = rng.randint(1, 3) + rum
         if rng.random() < 0.45:
             o['balls'] = rng.randint(1, 3)
-        if rng.random() < 0.12 + (0.2 if how == 'win_crew' else 0) + (0.2 if enemy_key == 'tide' else 0):
+        if rng.random() < 0.12 + (0.2 if how == 'win_crew' else 0) + (0.2 if enemy_key == 'frigate' else 0):
             o['weapon'] = 'random'
         if how == 'win_crew' and rng.random() < 0.25:
             o['add_crew'] = 'random'
@@ -210,7 +219,7 @@ class GameState:
         if nd.kind == 'exit':
             return events.exit_event(sec, None)
         if sec.overrun(nd) and not nd.cleared:
-            return events.tide_event()
+            return events.armada_event()
         if nd.kind == 'port':
             return events.port_event(rng)
         if not first_visit or nd.cleared:
@@ -241,8 +250,12 @@ class GameState:
         self.seen.add(e['id'])
         return e
 
+    def unlock_notes(self, **kw):
+        return [f"NEW SHIP UNLOCKED: {n}!" for n in profile.record(**kw)]
+
     def next_sector(self):
         self.sector_idx += 1
+        self.new_unlocks = self.unlock_notes(best_sea=self.sector_idx + 1)
         self.stats['sea'] = self.sector_idx + 1
         self.sector = Sector(self.sector_idx, self.rng)
         self.pending = {}

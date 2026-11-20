@@ -4,34 +4,57 @@ import random
 from collections import deque
 
 from . import data
-from .config import T
+from .config import RH, TOP_ROW, TW
 
 
 class Room:
-    def __init__(self, idx, sys, gx, gy, w, h):
-        self.idx, self.sys = idx, sys
-        self.gx, self.gy, self.w, self.h = gx, gy, w, h
+    """One room on one deck. Crew stand on its floor, one per tile."""
+
+    def __init__(self, idx, kind, gx, gy, w, sys=None):
+        self.idx, self.kind, self.sys = idx, kind, sys
+        self.gx, self.gy, self.w, self.h = gx, gy, w, 1
         self.fire = 0.0      # 0..100
-        self.water = 0.0     # 0..100
+        self.water = 0.0     # 0..100 (percentage of the room's height)
         self.breach = False
         self.breach_prog = 0.0
+        self.exploded = False
+
+    @property
+    def open_air(self):
+        return self.gy <= TOP_ROW
+
+    @property
+    def title(self):
+        if self.sys:
+            return data.SYSTEMS[self.sys]['title']
+        return data.FLAVOR.get(self.kind, self.kind.title())
 
     def tiles(self):
-        return [(self.gx + i, self.gy + j) for j in range(self.h) for i in range(self.w)]
-
-    def tile_center(self, k):
-        tx, ty = self.tiles()[k]
-        return ((tx + 0.5) * T, (ty + 0.5) * T)
+        return [(self.gx + i, self.gy) for i in range(self.w)]
 
     @property
     def n_tiles(self):
-        return self.w * self.h
+        return self.w
+
+    @property
+    def floor_y(self):
+        return (self.gy + 1) * RH - 2
+
+    def tile_center(self, k):
+        return ((self.gx + k + 0.5) * TW, self.floor_y)
 
     def center(self):
-        return ((self.gx + self.w / 2) * T, (self.gy + self.h / 2) * T)
+        return ((self.gx + self.w / 2) * TW, (self.gy + 0.5) * RH)
+
+    @property
+    def rect(self):
+        return (self.gx * TW, self.gy * RH, self.w * TW, RH)
 
     def contains(self, x, y):
-        return self.gx * T <= x < (self.gx + self.w) * T and self.gy * T <= y < (self.gy + self.h) * T
+        return self.gx * TW <= x < (self.gx + self.w) * TW and self.gy * RH <= y < (self.gy + 1) * RH
+
+    def has_col(self, c):
+        return self.gx <= c < self.gx + self.w
 
 
 class System:
@@ -44,13 +67,17 @@ class System:
         self.repair_prog = 0.0
         self.harm_prog = 0.0
         self.sub = data.SYSTEMS[name].get('sub', False)
+        self.flooded = False
 
     @property
     def intact(self):
         return max(0, self.level - self.damage)
 
     def eff(self):
-        return self.intact if self.sub else min(self.power, self.intact)
+        e = self.intact if self.sub else min(self.power, self.intact)
+        if self.flooded and e > 0:
+            e -= 1
+        return e
 
 
 class Weapon:
@@ -97,6 +124,9 @@ class Crew:
         self.bark_t = 0.0
         self.anim = rng.random() * 10
         self.walk_t = 0.0
+        self.mode = 'stand'
+        self.facing = 1 if side == 'player' else -1
+        self.station = None
         Crew._uid += 1
         self.uid = Crew._uid
 
@@ -124,7 +154,7 @@ class Crew:
         if not self.path or self.ship is None:
             return self.room
         for r in self.ship.rooms:
-            if r.contains(self.x, self.y):
+            if r.contains(self.x, self.y - 3):
                 return r.idx
         return self.room
 
@@ -139,26 +169,33 @@ class Crew:
         k = ship.free_tile(room_idx, self.side, exclude=self)
         if k is None:
             return False
-        route = ship.route(self.cur_room(), room_idx)
-        if route is None:
+        pts = ship.path_points(self.cur_room(), room_idx, (self.x, self.y))
+        if pts is None:
             return False
-        pts = [ship.doors[(a, b)] for a, b in zip(route, route[1:])]
-        pts.append(ship.rooms[room_idx].tile_center(k))
+        pts.append((*ship.rooms[room_idx].tile_center(k), 'walk'))
         self.path = pts
         self.room, self.tile = room_idx, k
         return True
 
     def update_move(self, dt):
         if not self.path:
+            self.mode = 'stand'
             return
-        tx, ty = self.path[0]
-        spd = self.skill('speed') * T * 1.4
-        if self.cls == 'drunk':
-            spd *= 0.6 + 0.8 * abs(math.sin(self.anim * 1.7))
+        tx, ty, mode = self.path[0]
+        spd = self.skill('speed') * TW * 1.5
+        if mode == 'climb':
+            spd *= 0.55
+        elif mode == 'stairs':
+            spd *= 0.8
+        if self.cls == 'drunk' and mode == 'walk':
+            spd *= 0.55 + 0.9 * abs(math.sin(self.anim * 1.7))
         dx, dy = tx - self.x, ty - self.y
         dist = math.hypot(dx, dy)
         step = spd * dt
         self.walk_t += dt
+        self.mode = mode
+        if abs(dx) > 0.3 and mode != 'climb':
+            self.facing = 1 if dx > 0 else -1
         if dist <= step:
             self.x, self.y = tx, ty
             self.path.pop(0)
@@ -174,53 +211,58 @@ class Ship:
         self.kind = kind
         lay = data.LAYOUTS[layout]
         self.layout_key = layout
-        self.gw = max(r[1] + r[3] for r in lay)
-        self.gh = max(r[2] + r[4] for r in lay)
+        self.gw = max(r[1] + r[3] for r in lay['rooms'])
+        self.gh = max(r[2] for r in lay['rooms']) + 1
         self.rooms = []
-        for i, (sysn, gx, gy, w, h) in enumerate(lay):
-            if mirror:
-                gx = self.gw - gx - w
-            if sysn and levels.get(sysn, 0) <= 0:
-                sysn = None
-            self.rooms.append(Room(i, sysn, gx, gy, w, h))
+        for kind_, gx, gy, w in lay['rooms']:
+            sysn = None
+            if kind_ in data.SYSTEMS:
+                if levels.get(kind_, 0) > 0:
+                    sysn = kind_
+                else:
+                    kind_ = data.SYS_FALLBACK.get(kind_, 'hold')
+            self.rooms.append(Room(len(self.rooms), kind_, gx, gy, w, sysn))
+        self.masts = list(lay.get('masts', []))
         self.sys = {r.sys: System(r.sys, levels[r.sys]) for r in self.rooms if r.sys}
         self.sys_room = {r.sys: r.idx for r in self.rooms if r.sys}
         self.hull = self.hull_max = hull
         self.gusto = gusto
         self.weapons = [Weapon(k) for k in weapons]
         self.crew = []
-        self.facing = -1 if mirror else 1
+        self.facing = 1
         self.shield_layers = 0
         self.shield_t = 0.0
         self.escape = 0.0
         self.fleeing = False
         self.manning = {}
         self.ammo = 8   # enemies only
-        self._build_graph()
+        self.recoil = {}
+        self.grapple = False
+        self.faction = data.ENEMIES[kind].get('faction', 'pirate') if kind in data.ENEMIES else 'rebel'
+        self._build_graph(lay.get('links', []))
 
     # -- geometry --
-    def _build_graph(self):
+    def _build_graph(self, links):
+        """Rooms joined by doors (same deck, side by side) and by ladders, stairs and rigging (vertical)."""
         self.adj = {r.idx: [] for r in self.rooms}
-        self.doors = {}
+        self.edges = {}
+        self.links = []
         for a in self.rooms:
             for b in self.rooms:
-                if a.idx >= b.idx:
-                    continue
-                door = None
-                if a.gx + a.w == b.gx or b.gx + b.w == a.gx:
-                    x = b.gx if a.gx + a.w == b.gx else a.gx
-                    lo, hi = max(a.gy, b.gy), min(a.gy + a.h, b.gy + b.h)
-                    if hi > lo:
-                        door = (x * T, (lo + hi) / 2 * T)
-                elif a.gy + a.h == b.gy or b.gy + b.h == a.gy:
-                    y = b.gy if a.gy + a.h == b.gy else a.gy
-                    lo, hi = max(a.gx, b.gx), min(a.gx + a.w, b.gx + b.w)
-                    if hi > lo:
-                        door = ((lo + hi) / 2 * T, y * T)
-                if door:
-                    self.adj[a.idx].append(b.idx)
-                    self.adj[b.idx].append(a.idx)
-                    self.doors[(a.idx, b.idx)] = self.doors[(b.idx, a.idx)] = door
+                if a.idx != b.idx and a.gy == b.gy and a.gx + a.w == b.gx:
+                    self._join(a.idx, b.idx, ('door', b.gx * TW))
+        for kind, col, row in links:
+            up = next((r for r in self.rooms if r.gy == row and r.has_col(col)), None)
+            low_col = col + 1 if kind == 'stairs' else col
+            lo = next((r for r in self.rooms if r.gy == row + 1 and r.has_col(low_col)), None)
+            if up and lo:
+                self._join(up.idx, lo.idx, (kind, col, up.idx, lo.idx))
+                self.links.append((kind, col, up.idx, lo.idx))
+
+    def _join(self, a, b, info):
+        self.adj[a].append(b)
+        self.adj[b].append(a)
+        self.edges[(a, b)] = self.edges[(b, a)] = info
 
     def route(self, a, b):
         if a == b:
@@ -239,6 +281,39 @@ class Ship:
                         return path[::-1]
                     q.append(m)
         return None
+
+    def path_points(self, a, b, start):
+        """Waypoints (x, y, mode) to walk from room a to room b. Modes: walk, climb, stairs."""
+        route = self.route(a, b)
+        if route is None:
+            return None
+        pts = []
+        cur_y = self.rooms[a].floor_y
+        if abs(start[1] - cur_y) > 1:            # mid-ladder: finish getting onto this floor
+            pts.append((start[0], cur_y, 'climb'))
+        for r1, r2 in zip(route, route[1:]):
+            info = self.edges[(r1, r2)]
+            R1, R2 = self.rooms[r1], self.rooms[r2]
+            if info[0] == 'door':
+                pts.append((info[1], R1.floor_y, 'walk'))
+            elif info[0] in ('ladder', 'rigging'):
+                cx = (info[1] + 0.5) * TW
+                pts.append((cx, R1.floor_y, 'walk'))
+                pts.append((cx, R2.floor_y, 'climb'))
+            else:  # stairs: top at column c (upper room), bottom at column c+1 (lower room)
+                col = info[1]
+                top = (col * TW + 3, self.rooms[info[2]].floor_y)
+                bot = ((col + 2) * TW - 3, self.rooms[info[3]].floor_y)
+                if r1 == info[2]:
+                    pts.append((*top, 'walk'))
+                    pts.append((*bot, 'stairs'))
+                else:
+                    pts.append((*bot, 'walk'))
+                    pts.append((*top, 'stairs'))
+        return pts
+
+    def top_rooms(self):
+        return [r.idx for r in self.rooms if r.gy == TOP_ROW]
 
     def free_tile(self, room_idx, side, exclude=None):
         taken = {c.tile for c in self.crew if c is not exclude and c.room == room_idx
@@ -367,7 +442,8 @@ class Ship:
         return self.manning.get(name)
 
     def flood_frac(self):
-        return sum(r.water for r in self.rooms) / (100.0 * len(self.rooms))
+        below = [r for r in self.rooms if not r.open_air]
+        return sum(r.water * r.w for r in below) / (100.0 * max(1, sum(r.w for r in below)))
 
     def evasion(self, fog=False):
         helm, sails = self.sys.get('helm'), self.sys.get('sails')
@@ -400,6 +476,9 @@ class Ship:
     # -- simulation --
     def update(self, dt, battle):
         self._update_hazards(dt, battle)
+        for r in self.rooms:
+            if r.sys:
+                self.sys[r.sys].flooded = r.water > 55
         self._update_crew(dt, battle)
         # bulwarks regrow
         ml = self.max_layers()
@@ -432,28 +511,51 @@ class Ship:
             if c.bark_t > 0:
                 c.bark_t -= dt
             c.anim += dt
+            c.act_t = getattr(c, 'act_t', 0.0) + dt
         dead = [c for c in self.crew if not c.alive]
         for c in dead:
             self.crew.remove(c)
             if battle:
                 battle.emit('death', ship=self, crew=c)
 
+    def waterline_row(self):
+        """Rows at or below this index are under the sea's surface."""
+        return TOP_ROW + 2
+
     def _update_hazards(self, dt, battle):
         rooms = self.rooms
-        flow = [0.0] * len(rooms)
+        delta = [0.0] * len(rooms)
+        wl = self.waterline_row()
         for r in rooms:
-            if r.breach:
-                r.water = min(100.0, r.water + 9 * dt)
+            if r.breach and not r.open_air:
+                rate = 11 if r.gy >= wl else 4      # below the waterline the sea pours in
+                delta[r.idx] += rate * dt
+            elif r.water > 0 and r.gy < wl and not any(rooms[n].gy > r.gy for n in self.adj[r.idx]):
+                delta[r.idx] -= 3 * dt                # scuppers
             elif r.water > 0:
-                r.water = max(0.0, r.water - 3 * dt)
-            for n in self.adj[r.idx]:
-                diff = r.water - rooms[n].water
-                if diff > 5:
-                    f = diff * 0.12 * dt
-                    flow[r.idx] -= f
-                    flow[n] += f
+                delta[r.idx] -= 1.2 * dt              # pumps, slowly
+            if r.open_air and r.water > 0:
+                delta[r.idx] -= 40 * dt               # top deck: it just runs overboard
+        for (a_, b_), info in self.edges.items():
+            if a_ > b_:
+                continue
+            A, B = rooms[a_], rooms[b_]
+            if info[0] == 'door':
+                diff = A.water - B.water
+                if abs(diff) > 4:
+                    f = diff * 0.25 * dt
+                    delta[a_] -= f
+                    delta[b_] += f
+            else:
+                up, lo = (A, B) if A.gy < B.gy else (B, A)
+                if up.water > 0 and lo.water < 100:   # water pours down hatches
+                    f = min(up.water, 30 * dt)
+                    delta[up.idx] -= f
+                    delta[lo.idx] += f * 0.8
+        for r in rooms:
+            r.water = max(0.0, min(100.0, r.water + delta[r.idx]))
             if r.fire > 0:
-                if r.water > 40:
+                if r.water > 35:
                     r.fire = max(0.0, r.fire - 45 * dt)
                 else:
                     r.fire = min(100.0, r.fire + 7 * dt)
@@ -464,19 +566,27 @@ class Ship:
                         if s.harm_prog >= 1:
                             s.harm_prog = 0
                             self.damage_system(r.sys, 1)
+                if r.kind == 'magazine' and r.fire > 70 and not r.exploded:
+                    r.exploded = True
+                    self.hull = max(0, self.hull - 4)
+                    for c in self.crew_in(r.idx):
+                        c.hp -= 60
+                    for n in self.adj[r.idx]:
+                        rooms[n].fire = max(rooms[n].fire, 40)
+                    r.breach = True
+                    if battle:
+                        battle.emit('explode', ship=self, room=r.idx)
                 for c in self.crew_in(r.idx):
                     c.hp -= 4 * dt * (0.4 + r.fire / 160)
                 for n in self.adj[r.idx]:
                     nb = rooms[n]
-                    if nb.fire <= 0 and nb.water < 40 and random.random() < dt * 0.035 * (r.fire / 100):
+                    if nb.fire <= 0 and nb.water < 35 and random.random() < dt * 0.035 * (r.fire / 100):
                         nb.fire = 10.0
                         if battle:
                             battle.emit('fire', ship=self, room=nb.idx)
-            if r.water > 70:
+            if r.water > 65:
                 for c in self.crew_in(r.idx):
                     c.hp -= 2.5 * dt
-        for i, r in enumerate(rooms):
-            r.water = max(0.0, min(100.0, r.water + flow[i]))
 
     def _update_crew(self, dt, battle):
         self.manning = {}
@@ -494,7 +604,7 @@ class Ship:
                 if c.foe not in foes:
                     c.foe = random.choice(foes)
                 c.task = 'fight'
-                c.foe.hp -= c.skill('fight') * dt
+                c.foe.hp -= c.skill('fight') * dt * (1.5 if getattr(c, 'axes', False) else 1.0)
                 continue
             c.foe = None
             rep = c.skill('repair')
@@ -539,19 +649,40 @@ class Ship:
 # ---------------------------------------------------------------------------
 # Factories
 # ---------------------------------------------------------------------------
-def make_player_ship(rng=random):
-    ship = Ship('HMS Questionable Decisions', 'courier', 30,
-                dict(sails=2, guns=3, bulwark=2, sickbay=1, helm=1, nest=1),
-                gusto=8, weapons=['twin_nines', 'mortar'], side='player')
-    for name in ('sails', 'bulwark'):
-        ship.add_power(name)
-        ship.add_power(name)
-    ship.add_power('sickbay')
+def make_player_ship(rng=random, key='sardine', crew=None):
+    d = data.SHIPS[key]
+    ship = Ship(d['name'], d['layout'], d['hull'], dict(d['sys']), gusto=d['gusto'],
+                weapons=list(d['weapons']), side='player', kind=None)
+    ship.faction = d['faction']
+    ship.key = key
+    # power: bulwarks first, then sails, then sick bay, then cannons
+    for name in ('bulwark', 'sails', 'sickbay'):
+        if name in ship.sys:
+            while ship.add_power(name):
+                if ship.reactor_free() <= sum(w.power for w in ship.weapons) and name != 'bulwark':
+                    break
     for w in ship.weapons:
-        ship.power_weapon(w)
-    for cls, sysn in (('captain', 'helm'), ('drunk', 'guns'), ('deckhand', 'sails')):
+        if not ship.power_weapon(w):
+            for name in ('sickbay', 'sails'):
+                if name in ship.sys and ship.sys[name].power > 1 and ship.remove_power(name):
+                    if ship.power_weapon(w):
+                        break
+    stations = [s for s in ('helm', 'guns', 'sails', 'bulwark', 'nest', 'sickbay') if s in ship.sys_room]
+    classes = crew or d['crew']
+    # put each crew member on the station they are best at, captain on the helm first
+    order = sorted(classes, key=lambda c: 0 if c == 'captain' else (1 if c == 'drunk' else 2))
+    used = set()
+    for cls in order:
         c = Crew(cls, side='player', rng=rng)
-        ship.place(c, ship.sys_room[sysn], rng)
+        pref = {'captain': 'helm', 'drunk': 'guns', 'deckhand': 'sails', 'monkey': 'guns',
+                'carpenter': 'bulwark', 'marine': 'bulwark', 'brute': 'guns'}.get(cls)
+        room = None
+        for st in ([pref] if pref else []) + stations:
+            if st in ship.sys_room and st not in used:
+                room = ship.sys_room[st]
+                used.add(st)
+                break
+        ship.place(c, room, rng)
     return ship
 
 
@@ -559,26 +690,27 @@ def make_enemy(key, sector_idx, rng=random):
     t = data.ENEMIES[key]
     lv = dict(t['sys'])
     hull = t['hull'] + 2 * sector_idx
-    if key not in ('boss', 'tide'):
+    if key not in ('boss', 'frigate'):
         if sector_idx >= 3 or (sector_idx >= 1 and lv.get('bulwark', 0) == 0):
             lv['bulwark'] = min(6, lv.get('bulwark', 0) + 2)
         lv['sails'] = lv.get('sails', 1) + sector_idx // 2
         lv['guns'] = lv.get('guns', 1) + sector_idx // 2
     weapons = list(t['weapons'])
-    if sector_idx >= 3 and key not in ('boss', 'tide') and len(weapons) < 3:
+    if sector_idx >= 3 and key not in ('boss', 'frigate') and len(weapons) < 3:
         weapons.append(rng.choice(['long_nine', 'chain_shot', 'hot_shot']))
         lv['guns'] = lv.get('guns', 1) + 1
     ship = Ship(rng.choice(t['names']), t['layout'], hull, lv, gusto=99, weapons=weapons,
-                side='enemy', mirror=True, kind=key)
+                side='enemy', mirror=False, kind=key)
     ship.autopower()
     ship.shield_layers = ship.max_layers()
     crew_list = list(t['crew'])
     if sector_idx >= 2 and key not in ('boss',):
-        crew_list.append('pirate' if key != 'ghost' else 'ghost')
+        crew_list.append({'ghost': 'ghost', 'crown': 'marine'}.get(t.get('faction'), 'pirate'))
     stations = [s for s in ('helm', 'guns', 'sails', 'bulwark') if s in ship.sys_room]
     for i, cls in enumerate(crew_list):
         c = Crew(cls, side='enemy', rng=rng)
         room = ship.sys_room[stations[i]] if i < len(stations) else None
         ship.place(c, room, rng)
         c.station = stations[i] if i < len(stations) else None
+        c.facing = 1
     return ship

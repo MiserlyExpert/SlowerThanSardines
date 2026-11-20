@@ -29,6 +29,9 @@ class Battle:
             w.charge = 0.0
             w.target = None
         self.player.escape = 0.0
+        self.board_cd = 0.0
+        for c in self.player.crew:
+            c.axes = getattr(gs, 'axes', False)
         self.player.shield_layers = self.player.max_layers()
 
     # ------------------------------------------------------------------
@@ -47,6 +50,7 @@ class Battle:
         if self.over:
             return
         self.t += dt
+        self.board_cd = max(0.0, self.board_cd - dt)
         self.enemy.autopower()
         for ship in (self.player, self.enemy):
             ship.update(dt, self)
@@ -114,6 +118,35 @@ class Battle:
         if ship is self.enemy and ship.escape >= 1.0:
             self.over = 'enemy_fled'
 
+    def player_board(self, crew):
+        """Swing selected crew standing on our top deck across to the enemy's top deck."""
+        if not self.player.grapple or self.board_cd > 0 or self.over:
+            return 0
+        from .config import TOP_ROW
+        ready = [c for c in crew if c.alive and c.ship is self.player and not c.moving
+                 and self.player.rooms[c.room].gy == TOP_ROW][:3]
+        if not ready:
+            return 0
+        tops = self.enemy.top_rooms()
+        for c in ready:
+            self.player.crew.remove(c)
+            c.path, c.foe = [], None
+            self.enemy.place(c, self.rng.choice(tops), self.rng)
+        self.board_cd = 20.0
+        self.emit('pboard', ship=self.enemy, room=ready[0].room, n=len(ready))
+        return len(ready)
+
+    def player_recall(self):
+        from .config import TOP_ROW
+        home = [c for c in self.enemy.crew if c.alive and c.side == 'player' and not c.moving
+                and self.enemy.rooms[c.room].gy == TOP_ROW]
+        tops = self.player.top_rooms()
+        for c in home:
+            self.enemy.crew.remove(c)
+            c.path, c.foe = [], None
+            self.player.place(c, self.rng.choice(tops), self.rng)
+        return len(home)
+
     def player_flee(self):
         if self.player.escape >= 1.0 and not self.over:
             self.over = 'fled'
@@ -139,7 +172,7 @@ class Battle:
             self.emit('block', ship=dst, room=room.idx)
             return
         dmg = wd['dmg']
-        dst.hull = max(0, dst.hull - dmg)
+        dst.hull = max(0, dst.hull - dmg - wd.get('hull', 0))
         if room.sys and (dmg > 0 or wd.get('sys')):
             dst.damage_system(room.sys, dmg + wd.get('sys', 0))
         crew_dmg = wd.get('crew', 12 * dmg)
@@ -153,7 +186,7 @@ class Battle:
         if not room.breach and self.rng.random() < breach_p:
             room.breach = True
             self.emit('breach', ship=dst, room=room.idx)
-        self.emit('hit', ship=dst, room=room.idx, dmg=dmg, crew=crew_dmg if wd.get('crew') else 0)
+        self.emit('hit', ship=dst, room=room.idx, dmg=dmg + wd.get('hull', 0), crew=crew_dmg if wd.get('crew') else 0)
 
     # ------------------------------------------------------------------
     def _ai(self):
@@ -231,7 +264,7 @@ class Battle:
                 self.board_t = rng.uniform(35, 55)
                 party = [c for c in own if getattr(c, 'station', None) not in ('helm',)]
                 party = sorted(party, key=lambda c: -c.skill('fight'))[:2]
-                dest = rng.choice([r.idx for r in p.rooms])
+                dest = rng.choice(p.top_rooms())
                 for c in party:
                     e.crew.remove(c)
                     c.path = []
@@ -279,6 +312,11 @@ class Battle:
     def cleanup(self):
         """Called after the battle ends: remove boarders, mop up hazards, fix systems."""
         ship = self.player
+        for c in list(self.enemy.crew):          # boarders swim home, soggy
+            if c.side == 'player' and c.alive:
+                self.enemy.crew.remove(c)
+                c.hp = max(1, c.hp - (25 if self.over in ('win', 'enemy_fled') else 0))
+                ship.place(c, None, self.rng)
         ship.crew = [c for c in ship.crew if c.side == 'player' and c.alive]
         for r in ship.rooms:
             r.fire = r.water = 0.0

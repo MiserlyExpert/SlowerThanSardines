@@ -1,131 +1,101 @@
 # Slower Than Sardines — Game Design
 
-> *A roguelike naval tactics game about delivering a very important napkin.*
+> *A roguelike naval tactics game about fish, freedom and taxes.*
 
 ## Pitch
 
-An FTL-style real-time-with-pause roguelike set on the high seas, in chunky pixel art.
-You captain the **HMS Questionable Decisions**, a royal courier sloop. A drunk Royal spy
-scribbled the location of the pirates' secret base on a bar napkin. Your crew
-(mostly your drunk) found it. Get the **Napkin of Destiny** to the **Royal Armada** in
-Royal Waters before the **Black Tide** pirate fleet runs you down.
+FTL at sea, side-on, in chunky pixel art. You are the **Free Fishers**, rebels against the Crown's
+Sardine Tax. Your crew has stolen the blueprints of **HMS Insufferable**, the Royal Armada's
+flagship. Its weakness: the powder magazine sits directly under the Admiral's tea room. Cross five
+seas, survive pirates everywhere, outrun the **Royal Armada** (pompous, very British, brass band
+included), and sink the Insufferable.
 
 Tone: dry, silly, affectionate. Every event is a small joke; every crew member has opinions.
 
-## Core loop (mirrors FTL)
+## Factions
 
-1. **Sea chart.** Each sea (sector) is a map of ~20 waypoints. Sail to a connected waypoint.
-   Every leg costs **1 Rum** (the crew won't sail sober).
-2. **Something happens.** A text event with choices, a port tavern (shop), or a pirate attack.
-3. **Battle.** Real-time with pause. Power systems, aim cannons at enemy rooms, move crew to
-   man stations, put out fires, patch leaks, repel boarders.
-4. **Loot.** Doubloons, rum, cannonballs, new cannons, new crew.
-5. **Upgrade** at the Shipwright between legs.
-6. Reach the sea's exit before the **Black Tide** (the pursuing fleet) catches you.
-   5 seas total. In the last, the Armada waits — and so does the pirate flagship.
-
-## Resources
-
-| FTL | Here | Notes |
-|---|---|---|
-| Fuel | **Rum** | 1 per leg. At 0 you can "sail sober": every crew member takes withdrawal damage. |
-| Scrap | **Doubloons** | Currency for shops and upgrades. |
-| Missiles | **Cannonballs** | Ammo for the Bomb Mortar and Rum Firebomb. |
-| Reactor | **Gusto** | Bars of crew effort you assign to powered systems. |
-| Federation | **Royal Armada** | Your destination. |
-| Rebel fleet | **The Black Tide** | Advances every day. Waypoints it swallows hold elite pirate warships. |
-
-## Fog
-
-Fog banks drift across every chart, thickest in **The Murk**.
-- Sailing into or out of fog takes **two days**, so the Black Tide gains twice as fast.
-- Battles in fog: every ship's **evasion is halved**, and **making sail (escape) charges at half speed**.
-- Fog has its own events (voices in the rum barrel, things beneath the hull).
-
-## Ship systems
-
-| System | Powered? | Effect |
-|---|---|---|
-| **Helm** | subsystem | Must be manned for any evasion or escape. Captains give a huge bonus. |
-| **Sails** | yes | +5% evasion per bar; speeds escape. |
-| **Gun Deck** | yes | Each cannon needs bars. Manning speeds reloads (drunks best). |
-| **Bulwarks** | yes | Every 2 bars = 1 layer of oak plating that blocks 1 shot, then regrows. |
-| **Sick Bay** | yes | Heals crew inside. |
-| **Crow's Nest** | subsystem | L1 see enemy crew, L2 see enemy reload bars, L3 +10% accuracy. |
-
-Damage: hits damage the hull **and** the system in the struck room (bars go red; power is lost).
-Crew standing in a room repair it.
-
-### Hazards
-- **Fire** spreads between rooms, burns systems and crew. Crew beat it out.
-- **Leaks** (hull breaches) flood the room. Water spreads to neighbouring rooms, drowns crew
-  in deep water, **puts out fires**, and makes the ship sluggish (evasion penalty). Crew patch leaks.
-
-## Crew
-
-| Class | Speciality |
+| Faction | Role |
 |---|---|
-| **Captain** | Best at the Helm by a mile. Unlocks *[Captain]* event options. |
-| **Drunkard** | **Best gunner and best brawler on the ship.** Wobbly, slow walker, bad repairer. *[Drunkard]* options. |
-| Deckhand | Good on Sails. Reliable. |
-| Powder Monkey | Fastest walker, good reloader, fragile. |
-| Carpenter | Repairs at 2.2× speed. |
-| Surgeon | Heals crew in the same room. |
-| Cook | Heals the whole crew after every leg. Tough. |
+| **Free Fishers** (you) | Rebels. Green flag with a silver sardine. |
+| **The Royal Armada** | The pursuing fleet (FTL's rebel fleet). Revenue cutters, frigates, marines in red coats, Admiral Lord Percival Crumpet-Smythe. |
+| **Pirates** | Everywhere, hostile to everyone. Sloops, cutters, brigantines, galleons, privateers. |
+| **Ghosts** | Haunt the fog. |
 
-Crew bark one-liners during battle. Enemies: Pirates, Pirate Brutes, Ghosts, the Dread Captain.
+## Core loop
 
-## Cannons
+1. **Shipyard.** Pick an unlocked ship and choose its starting crew.
+2. **Sea chart.** ~20 waypoints per sea. Each leg costs **1 Rum**. With no rum you sail sober, and the crew takes withdrawal damage.
+3. **Something happens.** An event, a port market, a pirate attack, or the Armada catching up.
+4. **Battle.** Real time with pause.
+5. **Loot**, then **upgrade** at the Shipwright.
+6. Reach the edge of each sea before the Armada swallows the chart. In the fifth sea, fight HMS Insufferable.
 
-Long Nine, Twin Nines, Carronade, Chain Shot (system damage), Grapeshot (crew damage),
-Heated Shot (fire), Swivel Battery (3 shots), Bomb Mortar (ignores bulwarks, uses ammo),
-Rum Firebomb (ignores bulwarks, starts fires), Royal 32-Pounder (rare).
+## Ships (side view)
 
-## Enemies
+Rows: **0** crow's nest (up the mast), **1** open top deck (helm, sails, forecastle), **2+** below
+decks. Rooms on the same deck connect through doorways; decks connect by **ladders**, **stairs**
+and **rigging** (rope ladder to the crow's nest). Systems are rooms. Flavour rooms (quarters, galley,
+mess hall, hold, powder magazine, brig, bar, beer cellar, crypt) add character, and the powder
+magazine can explode.
 
-Pirate Sloop, Smuggler Cutter (evasive), Pirate Brigantine, Rogue Privateer, Ghost Ship,
-Pirate Galleon, Black Tide Man-o-War (elite), and the boss: **The Leviathan's Grin**,
-which gets angrier (faster reloads) at half hull. Pirates with grappling hooks **board** you.
+| Ship | Unlock | Identity |
+|---|---|---|
+| The Plucky Sardine | start | Balanced rebel sloop |
+| The Rusty Cutlass | win 8 battles | Pirates: no sick bay, brawlers, fire cannon |
+| HMS Turncoat | reach sea 3 | Royal deserters: thick bulwarks, marines |
+| The Floating Tavern | 3 drunks at once | Three drunks, a cook, 25 rum, a Pepperbox |
+| The Rum Runner | win 20 battles | Tiny, evasive, quick guns |
+| The Damp Mary | defeat a Ghost Ship | Ghost crew, Hullbreaker |
 
-Win by sinking the hull (standard loot) or killing every crew member (+50% loot, chance of
-a prisoner joining). Enemies may try to flee when beaten up.
+## Systems
 
-## The five seas
+| System | Effect |
+|---|---|
+| Helm | Must be manned for evasion/escape. Captains are best. |
+| Sails | +5% evasion per bar; speeds escape. Sails visibly unfurl when powered. |
+| Gun Deck | Powers cannons; manning speeds reloads (drunks best). |
+| Bulwarks | Every 2 bars = one oak plate that blocks a shot. |
+| Sick Bay | Heals crew inside. |
+| Crow's Nest | L1 see inside enemy ships; L2 see their reloads; L3 +10% accuracy. |
 
-1. **The Shallows** — amateur pirates, many crabs.
-2. **Smuggler's Reach** — every crate says NOT RUM.
-3. **The Murk** — fog so thick you could spread it on toast. Ghost ships.
-4. **Kraken Deeps** — galleons and large locals.
-5. **Royal Waters** — the Armada rendezvous and the final battle.
+## Hazards
 
-## Controls
+- **Leaks.** Rooms below the waterline flood at 11%/s, rooms above it at 4%/s. Water flows through
+  doorways, pours down hatches, drowns crew above 65%, knocks a bar off a flooded system, and slows
+  the ship. Patched leaks are pumped out slowly.
+- **Fire.** Spreads, burns systems and crew, and is put out by flooding. A burning powder magazine explodes (-4 hull).
 
-- **Space** pause. **1–4** select cannon, then click an enemy room to target (auto-fires when loaded).
-- Left-click crew to select (Shift = add), **right-click** a room to send them there.
-- Systems bar: left-click add power, right-click remove. Cannon card: right-click to unpower.
-- **F11** fullscreen, **M** music.
+## Boarding
 
-## Tech
+**Grappling Hooks** (port, 60g): select crew standing on your top deck and press Board (20s
+cooldown). They land on the enemy's top deck and fight downward. **Recall** brings back crew who are
+standing on the enemy's top deck. **Boarding Axes** (45g): +50% melee damage. Killing every enemy
+crew member captures the ship for +50% loot. Enemies board you the same way, onto your top deck.
 
-- Python 3.10+, pygame 2. Native desktop window (640×360 logical, integer-scaled).
-- All art is pixel art defined in code (string sprite maps) — no asset files.
-- All sound is synthesized at startup (including a chiptune *Drunken Sailor*).
-- GitHub Actions builds standalone executables for Windows, macOS and Linux with PyInstaller.
+## Cannons and tags
+
+MULTI (3+ shots), FAST (≤7s reload), FIRE, HULL (heavy hull damage), LOB (ignores bulwarks, uses
+ammo), CREW (grapeshot), RIGGING (extra system damage), BASIC.
+
+Long Nine, Quick Nine, Bow Chaser, Twin Nines, Swivel Battery, Pepperbox Battery, Carronade,
+Hullbreaker, Royal 32-Pounder, Chain Shot, Grapeshot, Heated Shot, Brimstone Cannon, Bomb Mortar,
+Rum Firebomb.
 
 ## Code layout
 
 ```
 sardines/
-  config.py     constants
-  gfx.py        palette, text, panels, buttons, sprite maps, sea/fog drawing
-  audio.py      synthesized sfx + music
-  data.py       crew classes, weapons, systems, layouts, enemies, seas
-  model.py      Room / System / Weapon / Crew / Ship
-  battle.py     real-time combat simulation (no rendering; testable headless)
+  config.py     constants (640x360 logical, 16x24 px ship tiles)
+  font.py       hand-made proportional pixel font
+  gfx.py        palette, text, panels, buttons, sprites, sea, fog, portraits
+  audio.py      synthesized sfx + chiptune
+  data.py       crew, weapons, systems, side-view layouts, enemies, seas, player ships
+  model.py      Room / System / Weapon / Crew / Ship: pathing over doors, ladders, stairs; water & fire
+  battle.py     combat simulation (headless-testable), AI, boarding
+  render.py     side-view ship renderer and crew animation
   sector.py     sea chart generation
   events.py     event text & choices
   state.py      run state, outcomes, loot
-  render.py     ship & crew drawing
-  scenes/       title, map, event, combat, store, shipwright, endings
-  app.py        main loop & scene stack
+  profile.py    unlocks & lifetime stats
+  scenes/       title, shipyard, map, event, combat, store, shipwright, endings
 ```

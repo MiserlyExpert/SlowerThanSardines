@@ -28,7 +28,7 @@ class ShipwrightScene(Scene):
         gs, ship = self.gs, self.gs.ship
         self.buttons = []
         self.tips = []
-        y = 66
+        y = 88
         for name in data.SYS_ORDER:
             s = ship.sys.get(name)
             if not s:
@@ -49,14 +49,14 @@ class ShipwrightScene(Scene):
                           "Upgrading involves a shanty singer and a lot of coffee."))
         self.gusto_y = y + 6
         # cannons
-        y = 66
+        y = 88
         for i, w in enumerate(ship.weapons):
             b = gfx.Button((246, y, 170, 18), f"{w.name}  (stow)", lambda i=i: self.stow(i),
                            enabled=len(ship.weapons) > 1, size=14)
             self.buttons.append(b)
-            self.tips.append((b.rect, w.d['desc']))
+            self.tips.append((b.rect, w.d['desc'] + "  [" + ' '.join(data.weapon_tags(w.d)) + "]"))
             y += 22
-        y = 190
+        y = 214
         for i, key in enumerate(gs.cargo):
             d = data.WEAPONS[key]
             b = gfx.Button((246, y, 112, 18), f"{d['name']}", lambda i=i: self.equip(i),
@@ -69,8 +69,6 @@ class ShipwrightScene(Scene):
             y += 22
         self.buttons.append(gfx.Button((W // 2 - 50, H - 34, 100, 22), "Done", self.app.pop,
                                        key=pygame.K_ESCAPE))
-        self.buttons.append(gfx.Button((W // 2 - 50, H - 34, 100, 22), "Done", self.app.pop,
-                                       key=pygame.K_s))
 
     def upgrade(self, name, cost):
         gs = self.gs
@@ -110,6 +108,9 @@ class ShipwrightScene(Scene):
         self.build()
 
     def handle(self, e):
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_s:
+            self.app.pop()
+            return
         for b in self.buttons:
             if b.handle(e):
                 return
@@ -120,32 +121,33 @@ class ShipwrightScene(Scene):
         gfx.panel(s, (20, 30, W - 40, H - 40), 'parch')
         pygame.draw.rect(s, P['navy'], (0, 0, W, 24))
         draw_resources(s, gs)
-        gfx.text(s, "SHIPWRIGHT", W // 2, 34, P['dred'], 24, align='center')
-        gfx.text(s, self.msg, W // 2, 50, P['ink'], 14, align='center')
-        gfx.text(s, "SYSTEMS", 30, 58, P['dred'], 14)
-        y = 66
+        gfx.text(s, "SHIPWRIGHT", W // 2, 38, P['dred'], 24, align='center')
+        gfx.text(s, self.msg, W // 2, 58, P['ink'], align='center')
+        gfx.text(s, "SYSTEMS", 30, 76, P['dred'])
+        y = 88
         for name in data.SYS_ORDER:
             sy = ship.sys.get(name)
             if not sy:
                 continue
             mx = data.SYSTEMS[name]['max']
             s.blit(gfx.icon(name), (30, y + 4))
-            gfx.text(s, data.SYSTEMS[name]['title'], 42, y + 2, P['ink'], 14)
+            gfx.text(s, data.SYSTEMS[name]['title'], 42, y + 1, P['ink'])
             for j in range(mx):
                 pygame.draw.rect(s, P['dgreen'] if j < sy.level else P['parch2'], (42 + j * 13, y + 11, 11, 4))
             y += 22
-        gfx.text(s, f"Gusto: {ship.gusto}", 42, self.gusto_y + 4, P['ink'], 16)
-        gfx.text(s, f"CANNONS ({len(ship.weapons)}/{MAX_WEAPONS})", 246, 58, P['dred'], 14)
-        gfx.text(s, "THE HOLD", 246, 182, P['dred'], 14)
+        gfx.text(s, f"Gusto: {ship.gusto}", 30, self.gusto_y + 5, P['ink'])
+        gfx.text(s, f"CANNONS ({len(ship.weapons)}/{MAX_WEAPONS})", 246, 76, P['dred'])
+        gfx.text(s, "THE HOLD (click to equip)", 246, 202, P['dred'])
         if not gs.cargo:
-            gfx.text(s, "Empty, apart from a suspicious smell.", 246, 192, P['parch3'], 14)
-        gfx.text(s, f"CREW ({len(gs.crew)}/8)", 436, 58, P['dred'], 14)
-        y = 68
+            gfx.text(s, "Empty, apart from a suspicious smell.", 246, 214, P['parch3'])
+        gfx.text(s, f"CREW ({len(gs.crew)}/8)", 436, 76, P['dred'])
+        y = 86
         for c in gs.crew:
-            s.blit(gfx.crew_sprite(c.cls, c.skin), (436, y))
-            gfx.text(s, f"{c.name}", 448, y - 1, P['ink'], 14)
-            gfx.text(s, f"{c.title}  {int(c.hp)}/{c.max_hp}", 448, y + 7, P['wood2'], 14)
-            y += 22
+            gfx.portrait(s, c.cls, c.skin, 436, y, 2)
+            gfx.text(s, f"{c.name}", 466, y + 4, P['ink'])
+            gfx.text(s, f"{c.title}", 466, y + 14, P['wood2'])
+            gfx.bar(s, 560, y + 15, 50, 4, c.hp / c.max_hp, P['dgreen'] if c.hp > c.max_hp * .35 else P['red'])
+            y += 29
         m = pygame.mouse.get_pos()
         for b in self.buttons:
             b.draw(s, m)
@@ -153,5 +155,5 @@ class ShipwrightScene(Scene):
             if rect.collidepoint(m):
                 tooltip(s, tip, m, 220)
         for i, c in enumerate(gs.crew):
-            if pygame.Rect(436, 68 + i * 22, 180, 20).collidepoint(m):
+            if pygame.Rect(436, 86 + i * 29, 180, 28).collidepoint(m):
                 tooltip(s, c.d['desc'], m, 200)

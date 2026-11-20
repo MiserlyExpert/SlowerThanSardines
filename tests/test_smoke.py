@@ -5,6 +5,7 @@ import sys
 
 os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
 os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
+os.environ.setdefault('SARDINES_PROFILE', os.path.join(os.environ.get('TMPDIR', '/tmp'), 'sardines_test_profile.json'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pygame  # noqa: E402
@@ -68,6 +69,38 @@ def test_battles_resolve():
     print(results)
 
 
+def test_boarding_and_flooding():
+    from sardines.config import TOP_ROW
+    gs = GameState(4)
+    gs.ship.grapple = True
+    rng = random.Random(4)
+    enemy = model.make_enemy('brig', 1, rng)
+    gs.enemy = enemy
+    b = Battle(gs, enemy, rng=rng)
+    tops = gs.ship.top_rooms()
+    for c in gs.crew:
+        c.order_move(tops[0]) or c.order_move(tops[1])
+    for _ in range(400):
+        b.update(1 / 30)
+    n = b.player_board(gs.crew)
+    assert n >= 1, 'nobody could board'
+    assert any(c.side == 'player' for c in enemy.crew)
+    assert len(gs.crew) == 3       # crew aboard the enemy still count as ours
+    # flooding: a breach below the waterline fills the room, and water pours down through hatches
+    low = max(gs.ship.rooms, key=lambda r: r.gy)
+    low.breach = True
+    upper = next(r for r in gs.ship.rooms if r.gy == TOP_ROW + 1)
+    upper.water = 80
+    for _ in range(300):
+        b.update(1 / 30)
+        if b.over:
+            break
+    assert low.water > 20
+    b.cleanup()
+    gs.enemy = None
+    assert all(c.ship is gs.ship for c in gs.crew)
+
+
 def test_sectors_connected():
     rng = random.Random(1)
     for i in range(len(data.SECTORS)):
@@ -82,7 +115,7 @@ def test_every_event_choice_applies():
     gs = GameState(3)
     for c in ('drunk', 'cook', 'carpenter', 'surgeon', 'monkey'):
         gs.recruit(c)
-    pool = events.EVENTS + events.DISTRESS + [events.INTRO, events.tide_event(), events.port_event(gs.rng),
+    pool = events.EVENTS + events.DISTRESS + [events.INTRO, events.armada_event(), events.port_event(gs.rng),
                                               events.exit_event(gs.sector, None)]
     for ev in pool:
         ctx, target = gs.context()
@@ -138,6 +171,22 @@ def test_scenes_render():
     if out:
         pygame.image.save(app.screen, os.path.join(out, 'title.png'))
     app.top.new_game()
+    from sardines.scenes.hangar import HangarScene
+    from sardines import profile
+    profile.UNLOCK_ALL = True
+    hs = app.top
+    assert isinstance(hs, HangarScene)
+    for i, key in enumerate(data.SHIP_ORDER):
+        hs.select(i)
+        hs.cycle(0, 1)
+        app.step(0.3)
+        if out:
+            pygame.image.save(app.screen, os.path.join(out, f'hangar_{key}.png'))
+        from sardines.state import GameState
+        g = GameState(1, key, list(hs.crew))
+        assert len(g.crew) == len(hs.crew)
+    hs.select(0)
+    hs.start()
     app.step(0.1)
     if out:
         pygame.image.save(app.screen, os.path.join(out, 'intro.png'))
@@ -158,18 +207,26 @@ def test_scenes_render():
         if out and i == 0:
             pygame.image.save(app.screen, os.path.join(out, 'event_result.png'))
         app.pop()
-    for key, fog in (('brig', False), ('ghost', True), ('boss', False)):
+    for key, fog in (('brig', False), ('ghost', True), ('boss', False), ('revenue', False)):
         enemy = gs.make_enemy(key)
         cs = CombatScene(app, enemy, key, fog=fog, boss=(key == 'boss'))
         app.push(cs)
         for w in gs.ship.weapons:
             w.target = enemy.sys_room.get('guns', 0)
         for k in range(60 * 25):
+            if app.top is not cs:
+                break
             app.step(1 / 60)
-            if cs.battle.over:
+            if cs.battle.over and key != 'revenue':
                 break
             if out and k == 60 * 14:
                 pygame.image.save(app.screen, os.path.join(out, f'combat_{key}.png'))
+            if key == 'revenue' and k == 60:
+                enemy.hull = 0
+            if out and key == 'revenue' and cs.sink and 0.9 <= cs.sink.t < 0.9 + 1 / 60:
+                pygame.image.save(app.screen, os.path.join(out, 'sinking.png'))
+            if out and key == 'revenue' and cs.sink and 2.0 <= cs.sink.t < 2.0 + 1 / 60:
+                pygame.image.save(app.screen, os.path.join(out, 'sinking2.png'))
         cs.battle.cleanup()
         while app.top is not cs and app.top in app.stack and len(app.stack) > 1 and not isinstance(app.top, MapScene):
             app.pop()

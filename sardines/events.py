@@ -6,21 +6,23 @@ Choice keys:
 Outcome keys:
   text, doubloons/rum/balls/hull (int or (lo, hi)), heal, all_hurt, crew_hurt,
   add_crew (class or 'random'), lose_crew, weapon (key or 'random'), gusto, upgrade,
-  fleet (px the Black Tide moves), fight (enemy key), win (bonus outcome after a win),
+  fleet (px the Royal Armada moves), fight (enemy key), win (bonus outcome after a win),
   store, exit, boss, next (another event)
 Text placeholders: {drunk} {captain} {crew} {ship} {enemy} {sector} {next}
 """
 
 INTRO = dict(
     id='intro',
-    title='The Napkin of Destiny',
-    text=("Last Tuesday, a Royal spy got gloriously drunk in a pirate tavern and scribbled the location "
-          "of the pirates' secret base on a bar napkin. Then he fell asleep in the soup.\n\n"
-          "{drunk} found the napkin while looking for the soup. Which makes the {ship} the most "
-          "important vessel in the Queen's service.\n\n"
-          "Deliver the napkin to the Royal Armada in Royal Waters, five seas away. The Black Tide pirate "
-          "fleet wants it back. They are right behind you. No pressure. (Some pressure.)"),
-    choices=[dict(text="For Queen and Napkin!", out=dict())],
+    title='The Sardine Rebellion',
+    text=("By Royal Decree, every fish in the sea is now Property of His Majesty. Sardines require a licence. "
+          "Small sardines require a smaller, more expensive licence.\n\n"
+          "Enough is enough. You and the crew of {ship} are the Free Fishers: fishermen turned freedom "
+          "fighters. Last night {drunk} stole the blueprints of HMS Insufferable, the Crown's gigantic "
+          "flagship and floating tax office. They reveal one weakness: the powder magazine sits directly "
+          "under the Admiral's tea room.\n\n"
+          "HMS Insufferable waits at anchor in the King's Waters, five seas away. Sail there and sink it. "
+          "The Royal Armada is already chasing you, at a dignified pace, with a brass band."),
+    choices=[dict(text="Down with the Sardine Tax!", out=dict())],
 )
 
 EVENTS = [
@@ -36,9 +38,9 @@ EVENTS = [
             ]),
             dict(text="Let {drunk} talk to her.", req=dict(crew='drunk'), out=dict(
                 text="{drunk} and the mermaid sing a duet so off-key that a passing whale files a noise "
-                     "complaint. She leaves a barnacled chest as thanks for the 'harmonies'.",
+                     "complaint. She leaves a barnacled chest to thank them for the 'harmonies'.",
                 doubloons=(25, 40))),
-            dict(text="Sail on. We have a napkin to deliver.", out=dict(
+            dict(text="Sail on. We have a revolution to run.", out=dict(
                 text="She waves goodbye. With the fork.")),
         ]),
     dict(id='crabs', text=(
@@ -68,7 +70,7 @@ EVENTS = [
             dict(text="Send the carpenter.", req=dict(crew='carpenter'), out=dict(
                 text="Your carpenter fixes the leak, then rebuilds their entire hold out of spite. "
                      "They pay double and throw in some shot.", doubloons=(35, 45), balls=2)),
-            dict(text="Rob them. We're the good guys, but we're also broke.", out=dict(
+            dict(text="Rob them. We're freedom fighters, but we're also broke.", out=dict(
                 text="The 'merchant' crew turns out to be ex-marines. Of course they are.",
                 fight='cutter')),
         ]),
@@ -115,7 +117,7 @@ EVENTS = [
                      "You salvage some floating debris.", balls=-1, doubloons=20)),
             dict(text="{drunk} offers it a drink.", req=dict(crew='drunk'), out=dict(
                 text="The kraken accepts. It is now your best friend. It escorts you for a while, "
-                     "frightening off the Black Tide's scouts.", rum=-1, fleet=-60)),
+                     "frightening off the Armada's scouts.", rum=-1, fleet=-60)),
         ]),
     dict(id='castaway', text=(
         "A man on a tiny island waves frantically. He has a very long beard, a coconut with a face drawn "
@@ -146,22 +148,78 @@ EVENTS = [
                 text="A sailor of reasonable sobriety signs on.", doubloons=-30, add_crew='random')),
             dict(text="Keep sailing.", out=dict(text="Behind you, a chair flies out of a window. 9pm sharp.")),
         ]),
-    dict(id='armada_patrol', text=(
-        "A Royal Armada frigate pulls alongside. A young officer in a terrifyingly clean uniform inspects "
-        "your papers. 'Courier service? Napkin delivery? How... quaint.'"),
+    dict(id='inspection', text=(
+        "A Royal Armada cutter signals you to heave to for inspection. An officer squints at your ship "
+        "through a monocle, then through a second, larger monocle."),
         choices=[
-            dict(text="Request supplies in the Queen's name.", outs=[
-                (6, dict(text="He sighs and hands over supplies, plus a form to fill out in triplicate.",
-                         rum=2, balls=2)),
-                (4, dict(text="'Do you have Form 27-B?' You do not. You leave with nothing but a lasting "
-                              "resentment of paperwork.")),
+            dict(text="Pretend to be humble fishermen.", outs=[
+                (6, dict(text="'Carry on, peasants.' He even buys some fish. You were, technically, humble "
+                              "fishermen.", doubloons=12)),
+                (4, dict(text="He spots the rebel flag you forgot to take down. It has a sardine on it. "
+                              "Awkward.", fight='revenue')),
             ]),
-            dict(text="Pull rank.", req=dict(crew='captain'), out=dict(
-                text="Your captain outranks him by two promotions and one exceptional moustache. "
-                     "He resupplies you and sends his carpenters over.", hull=8, balls=3)),
-            dict(text="Show him the napkin.", out=dict(
-                text="He reads it. Goes pale. Salutes. 'Godspeed, courier.' Then he gives you nothing, "
-                     "because saluting is free.")),
+            dict(text="Claim to be a visiting Duke.", req=dict(crew='captain'), out=dict(
+                text="Your captain announces themself as the Duke of Little Soggington. The officer bows so "
+                     "deeply he falls overboard. You help yourself to his supplies while he fishes himself out.",
+                balls=3, rum=2)),
+            dict(text="Open fire. Viva la sardine!", out=dict(
+                text="'How DARE you,' he says, mostly to his monocle.", fight='revenue')),
+        ]),
+    dict(id='taxman', text=(
+        "A Royal Revenue officer rows over with a ledger the size of a door. 'Sardine Tax, Herring Levy, "
+        "and the Breathing-Near-The-King's-Water Duty. That will be thirty doubloons.'"),
+        choices=[
+            dict(text="Pay the tax. (30 doubloons)", req=dict(doubloons=30), out=dict(
+                text="He hands you a receipt. There is a small tax on the receipt.", doubloons=-32)),
+            dict(text="Offer him a bowl of stew.", req=dict(crew='cook'), out=dict(
+                text="He eats it. He is never the same again. He forgives your taxes, quits the Crown and "
+                     "rows off to become a poet, leaving his cashbox behind.", doubloons=(20, 30))),
+            dict(text="Throw his ledger in the sea.", out=dict(
+                text="He blows a tiny silver whistle. A revenue cutter appears from behind a rock. "
+                     "It was waiting there the whole time. Taxmen are patient.", fight='revenue',
+                win=dict(text="You find the tax chest. It's full of everyone else's money.", doubloons=30))),
+        ]),
+    dict(id='tea_time', text=(
+        "Through the spyglass: an entire Armada squadron, sitting perfectly still in the water. "
+        "It's four o'clock. They're having tea."),
+        choices=[
+            dict(text="Sneak past quietly.", out=dict(
+                text="You tiptoe past. Nobody even looks up. Somebody asks for the milk.", fleet=-45)),
+            dict(text="Steal their biscuits.", outs=[
+                (5, dict(text="You row off with the biscuit tin. It's solid silver. The biscuits are stale.",
+                         doubloons=30, heal=15)),
+                (5, dict(text="A marine catches you mid-biscuit. Tea time is OVER.", fight='revenue')),
+            ]),
+            dict(text="Have {drunk} play the bagpipes at them.", req=dict(crew='drunk'), out=dict(
+                text="Twelve ships spill their tea at once. The squadron is too upset to give chase. "
+                     "Several officers are weeping.", fleet=-70)),
+        ]),
+    dict(id='wanted', text=(
+        "A wanted poster is nailed to a buoy. It shows your ship, drawn badly. The caption reads: "
+        "WANTED: THE PLUCKY SARDINE. SLOWER THAN SARDINES. SMELLS LIKE THEM TOO."),
+        choices=[
+            dict(text="Tear it down.", out=dict(
+                text="Morale improves. The crew agrees the drawing made the ship look fat.", heal=10)),
+            dict(text="Let {drunk} make some improvements.", req=dict(crew='drunk'), out=dict(
+                text="{drunk} draws a moustache on the Admiral's portrait in the corner and adds the words "
+                     "'SMELLS LIKE A CRUMPET'. Morale skyrockets.", heal=25)),
+            dict(text="Claim the reward yourself.", out=dict(
+                text="It turns out you can't hand yourself in for the reward. You tried, though. "
+                     "The clerk was very confused.", fleet=15)),
+        ]),
+    dict(id='pirate_parley', text=(
+        "A pirate brig hails you. 'Oi! You the lot what keeps annoying the Armada? We like you. "
+        "A bit. Still gonna rob you, though.'"),
+        choices=[
+            dict(text="Fight them.", out=dict(text="'Nothing personal!' they shout. It feels personal.",
+                                             fight='brig')),
+            dict(text="Pay for safe passage. (20 doubloons)", req=dict(doubloons=20), out=dict(
+                text="They take the coin and throw you a jaunty salute. One of them winks. Why the wink?",
+                doubloons=-20)),
+            dict(text="Propose an alliance against the Crown.", req=dict(crew='captain'), out=dict(
+                text="Your captain's speech about freedom, fish and the tyranny of licences moves the pirate "
+                     "captain to tears. 'Down with the Crown!' he sobs, and throws you a crate of shot. "
+                     "'Now get lost before I change me mind.'", balls=4, rum=2)),
         ]),
     dict(id='storm', text="Black clouds gather. Thunder rolls. The barometer just says NOPE.",
          choices=[
@@ -169,11 +227,11 @@ EVENTS = [
                  (5, dict(text="The storm batters you, but you survive. Your sails are ragged. "
                                "So is your spirit.", hull=-4)),
                  (5, dict(text="The storm flings you along at terrific speed! You gain distance on the "
-                               "Black Tide.", fleet=-40)),
+                               "Armada.", fleet=-40)),
              ]),
              dict(text="Let the captain steer through it.", req=dict(crew='captain'), out=dict(
                  text="Your captain threads the storm like they're parallel parking. "
-                      "You emerge well ahead of schedule.", fleet=-55)),
+                      "The Armada, who refuse to sail in weather 'this common', fall well behind.", fleet=-55)),
          ]),
     dict(id='bottle', text=(
         "A message in a bottle bobs alongside. 'If you're reading this, I've buried treasure on an island "
@@ -253,19 +311,17 @@ EVENTS = [
                 crew_hurt=40)),
         ]),
     dict(id='press_gang', text=(
-        "A navy press-gang boat approaches. 'We're short-handed! We'll be taking one of your crew "
-        "for the Armada. For the Queen!'"),
+        "A Royal Navy press-gang boat approaches. 'We're short-handed! We'll be taking one of your crew "
+        "for His Majesty's service. It's an honour! Mostly.'"),
         choices=[
-            dict(text="Hand over a 'volunteer'.", req=dict(crew_n=3), out=dict(
-                text="Your crew volunteers {crew} by all taking one big step backward. "
-                     "The Armada pays a modest finder's fee.", lose_crew=True, doubloons=35)),
-            dict(text="'We're on the Queen's business too!'", req=dict(crew='captain'), out=dict(
-                text="Your captain waves the napkin at them. They apologise and leave a crate of shot "
-                     "as a peace offering.", balls=4)),
-            dict(text="Refuse and sail off.", outs=[
-                (5, dict(text="They let you go. They had a quota, not a death wish.")),
-                (5, dict(text="They're not navy at all — they're pirates in borrowed hats!", fight='sloop')),
-            ]),
+            dict(text="Send {drunk} as the 'volunteer'.", req=dict(crew='drunk'), out=dict(
+                text="{drunk} goes willingly. An hour later, the Armada rows them back with a crate of rum, "
+                     "a formal apology and a strongly worded letter.", rum=3)),
+            dict(text="Fight them off!", out=dict(text="'Resisting the press! Most irregular!'",
+                                                  fight='revenue')),
+            dict(text="Hand someone over.", req=dict(crew_n=3), out=dict(
+                text="Your crew volunteers {crew} by all taking one big step backward. You'll miss them. "
+                     "A bit.", lose_crew=True, doubloons=20)),
         ]),
     dict(id='cursed_gold', text="You fish a chest of gold out of the sea. It's cold to the touch, and whispers.",
          choices=[
@@ -300,7 +356,8 @@ EVENTS = [
             dict(text="Offer them a job.", outs=[
                 (5, dict(text="One accepts, swears off piracy, and immediately asks about dental.",
                          add_crew='pirate')),
-                (5, dict(text="They accept, then immediately try to steal the napkin. Overboard they go.")),
+                (5, dict(text="They accept, then immediately try to sell your blueprints to the Crown. "
+                              "Overboard they go.")),
             ]),
         ]),
     dict(id='lighthouse', text=(
@@ -310,6 +367,9 @@ EVENTS = [
             dict(text="Listen to the whole thing.", out=dict(
                 text="It takes six hours. Some of the rocks are, admittedly, very good rocks. "
                      "He gives you his favourite and some supplies.", fleet=25, doubloons=20, rum=2)),
+            dict(text="Ask him to shine his light at the Armada.", out=dict(
+                text="He swings the great lamp around and blinds an entire Armada squadron. 'Eleven years "
+                     "I've waited to do that,' he says quietly.", fleet=-40)),
             dict(text="Politely decline.", out=dict(
                 text="He rows away, crushed. You hear him tell a rock about it.")),
         ]),
@@ -349,11 +409,12 @@ DISTRESS = [
                 text="They thank you for the rope. The lecture, less so.")),
         ]),
     dict(id='sinking_merchant', text=(
-        "A merchant ship is sinking, fast. A pirate sloop circles it like a smug shark."),
+        "A fishing boat is sinking. A Royal Revenue cutter circles it, demanding tax on the water it's "
+        "taking on."),
         choices=[
-            dict(text="Drive off the pirates!", out=dict(
-                text="Battle stations!", fight='sloop',
-                win=dict(text="The grateful merchants reward you handsomely.", doubloons=(20, 30), rum=2))),
+            dict(text="Rescue the fishermen!", out=dict(
+                text="Battle stations!", fight='revenue',
+                win=dict(text="One of the grateful fishermen joins the rebellion.", add_crew='random'))),
             dict(text="Pretend you didn't see.", out=dict(
                 text="Everyone saw you pretend. Morale dips. So, slightly, does your self-respect.")),
         ]),
@@ -361,8 +422,8 @@ DISTRESS = [
         "A red flare arcs over the water from a small, sad-looking ketch."),
         choices=[
             dict(text="Investigate.", outs=[
-                (5, dict(text="It's a lost Armada supply ship! They're glad to share.", balls=3, rum=3,
-                         hull=4)),
+                (5, dict(text="It's a rebel supply drop, left by sympathisers! Long live the sardine!",
+                         balls=3, rum=3, hull=4)),
                 (3, dict(text="It's an ambush, because of course it is.", fight='brig')),
                 (2, dict(text="It's a birthday party. The flare was a candle. You are given cake.", heal=30)),
             ]),
@@ -381,7 +442,8 @@ QUIET = [
 FIGHT_INTROS = [
     "A {enemy} bears down on you, flags flying. Its crew is chanting something rude about your mother.",
     "Sails on the horizon! It's {enemy_name}, a {enemy}, and they've already opened their gunports.",
-    "A {enemy} cuts across your bow. Their captain yells 'Hand over the napkin!' How do they know?!",
+    "A {enemy} cuts across your bow. Their captain yells something about your 'outstanding fish licence'.",
+    "{enemy_name}, a {enemy}, swings alongside. Someone over there is already laughing at your ship.",
     "{enemy_name} drifts out from behind an island. It's a {enemy}. They look bored. You look like fun.",
 ]
 
@@ -410,28 +472,29 @@ def port_event(rng):
                          dict(text="Weigh anchor and leave.", out=dict())])
 
 
-def tide_event():
-    return dict(id='tide', text=(
-        "The Black Tide has caught up with you! A pirate man-o-war, black sails snapping, swings its "
-        "broadside toward you. This is going to be unpleasant."),
+def armada_event():
+    return dict(id='armada', text=(
+        "The Royal Armada has caught up with you! A frigate in gleaming white and gold swings its broadside "
+        "toward you while a brass band on its deck plays something smug."),
         choices=[
-            dict(text="Fight them.", out=dict(fight='tide')),
+            dict(text="Fight for freedom!", out=dict(fight='frigate')),
             dict(text="Offer a bribe. (40 doubloons)", req=dict(doubloons=40), outs=[
-                (5, dict(text="They take the money and wave you on. Honour among thieves!", doubloons=-40)),
-                (5, dict(text="They take the money. Then they attack anyway. Honour among thieves?",
-                         doubloons=-40, fight='tide')),
+                (5, dict(text="The captain pockets it and looks the other way. Corruption! Finally, something "
+                              "on your side.", doubloons=-40)),
+                (5, dict(text="He pockets it, arrests the bribe for corrupting an officer, then attacks you.",
+                         doubloons=-40, fight='frigate')),
             ]),
         ])
 
 
 def exit_event(sector, nxt):
     if sector.final:
-        return dict(id='finale', title='Royal Waters', text=(
-            "There! On the horizon! The Royal Armada's flagship, bunting and all, with a brass band "
-            "warming up on deck.\n\nBetween you and it, rising from the waves like a bad decision: "
-            "The Leviathan's Grin, flagship of the Black Tide. Dread Captain Barnacle Vane himself "
-            "roars across the water: 'THAT NAPKIN IS MINE!'"),
-            choices=[dict(text="Over my dead napkin! (Final battle)", out=dict(fight='boss', boss=True)),
+        return dict(id='finale', title='HMS Insufferable', text=(
+            "There she is. HMS Insufferable: four decks, nine hundred guns (allegedly), a ballroom, two "
+            "string quartets and a gift shop. She is so large she has her own weather.\n\n"
+            "On the quarterdeck, Admiral Lord Percival Crumpet-Smythe lowers his teacup. "
+            "'The sardine rebels? Here? How frightfully common. Sink them, and do it before the scones go cold.'"),
+            choices=[dict(text="Sink the Insufferable! (Final battle)", out=dict(fight='boss', boss=True)),
                      dict(text="Not yet. Let me prepare.", out=dict())])
     return dict(id='exit', text=(
         "You reach the edge of {sector}. Beyond lies {next}.\n\nOnce you leave, there's no coming back."),

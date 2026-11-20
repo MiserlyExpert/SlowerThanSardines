@@ -25,44 +25,57 @@ P = {k: hexc(v) for k, v in dict(
 SKINS = [hexc('#f2c09a'), hexc('#d49a6a'), hexc('#a86b45'), hexc('#6e432a')]
 
 # ---------------------------------------------------------------------------
-# Text
+# Text (custom pixel font, see font.py). Sizes: S/M -> 1x, L -> 2x, XL -> 3x, XXL -> 4x.
 # ---------------------------------------------------------------------------
-_fonts = {}
-_text_cache = {}
+from . import font as pfont
+
+S, M, L, XL, XXL = 14, 16, 24, 40, 52
+LINE = 10  # line spacing for 1x text
 
 
-def font(size):
-    f = _fonts.get(size)
-    if f is None:
-        f = _fonts[size] = pygame.font.Font(None, size)
-    return f
+def scale_for(size):
+    return 1 if size <= 18 else 2 if size <= 30 else 3 if size <= 44 else 4
+
+
+def line_h(size=16):
+    return LINE * scale_for(size)
+
+
+def cap_h(size=16):
+    return pfont.CAP_H * scale_for(size)
 
 
 def render(s, size=16, color=None):
-    color = color or P['white']
-    key = (s, size, color)
-    img = _text_cache.get(key)
-    if img is None:
-        if len(_text_cache) > 4000:
-            _text_cache.clear()
-        img = _text_cache[key] = font(size).render(s, False, color)
-    return img
+    return pfont.render(s, color or P['white'], scale_for(size))
 
 
 def text(surf, s, x, y, color=None, size=16, shadow=None, align='left'):
-    img = render(s, size, color)
+    sc = scale_for(size)
+    img = pfont.render(s, color or P['white'], sc)
     if align == 'center':
         x -= img.get_width() // 2
     elif align == 'right':
         x -= img.get_width()
     if shadow:
-        surf.blit(render(s, size, shadow), (x + 1, y + 1))
+        surf.blit(pfont.render(s, shadow, sc), (x + sc, y + sc))
     surf.blit(img, (x, y))
     return img.get_width()
 
 
+def text_outline(surf, s, x, y, color, size, outline=None, align='left'):
+    """Big title text with a chunky one-pixel (scaled) outline and drop shadow."""
+    outline = outline or P['ink']
+    sc = scale_for(size)
+    w = text_w(s, size)
+    if align == 'center':
+        x -= w // 2
+    for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (1, 1), (2, 2), (1, 2), (2, 1)):
+        text(surf, s, x + dx * sc, y + dy * sc, outline, size)
+    text(surf, s, x, y, color, size)
+
+
 def text_w(s, size=16):
-    return font(size).size(s)[0]
+    return pfont.width(s, scale_for(size))
 
 
 def wrap(s, width, size=16):
@@ -82,6 +95,16 @@ def wrap(s, width, size=16):
                 cur = word
         lines.append(cur)
     return lines
+
+
+def paragraph(surf, s, x, y, width, color=None, size=16, line=None, align='left', shadow=None):
+    """Draw wrapped text; returns the y below the last line."""
+    line = line or line_h(size) + 1
+    for ln in wrap(s, width, size):
+        xx = x + width // 2 if align == 'center' else x
+        text(surf, ln, xx, y, color, size, shadow=shadow, align=align)
+        y += line
+    return y
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +129,9 @@ def panel(surf, rect, kind='parch'):
     return r
 
 
+CHOICE_LINE = 11
+
+
 class Button:
     def __init__(self, rect, label, cb=None, enabled=True, key=None, kind='wood', size=16, tip=None):
         self.rect = pygame.Rect(rect)
@@ -125,7 +151,7 @@ class Button:
             pygame.draw.line(surf, P['wood0'], (r.left + 1, r.bottom - 2), (r.right - 2, r.bottom - 2))
             pygame.draw.rect(surf, P['black'], r, 1)
             col = P['white'] if self.enabled else P['lgrey']
-            text(surf, self.label, r.centerx, r.centery - font(self.size).get_height() // 2 + 1, col,
+            text(surf, self.label, r.centerx, r.centery - cap_h(self.size) // 2, col,
                  self.size, shadow=P['wood0'], align='center')
         elif self.kind == 'choice':
             if hover:
@@ -133,10 +159,10 @@ class Button:
             col = P['ink'] if self.enabled else P['parch3']
             if hover:
                 col = P['dred']
-            y = r.top + 2
-            for line in wrap(self.label, r.width - 4, self.size):
-                text(surf, line, r.left + 2, y, col, self.size)
-                y += 12
+            y = r.top + 3
+            for line in wrap(self.label, r.width - 8, self.size):
+                text(surf, line, r.left + 4, y, col, self.size)
+                y += CHOICE_LINE
 
     def handle(self, e):
         if not self.enabled:
@@ -183,7 +209,9 @@ CREW_SPR = {
     'pirate': ["..hhhh..", ".hhhhhhh", "..sese..", "..dddd..", ".cccccc.", "sccccccs", ".cccccc."],
     'brute': ["..hhhh..", ".hhhhhhh", ".ssesse.", ".dddddd.", "cccccccc", "sccccccs", "cccccccc"],
     'ghost': ["..hhhh..", ".hhhhhh.", "..sese..", "..ssss..", ".cccccc.", "s.cccc.s", ".cccccc."],
-    'dread': [".hhhhhh.", "hhhwwhhh", "..sese..", "..dddd..", ".cccccc.", "sccyyccs", ".cccccc."],
+    'marine': ["..hhhh..", ".hhhhhh.", "..sese..", "..ssss..", ".cwccwc.", "sccwwccs", ".cwccwc."],
+    'admiral': [".hhhhhh.", "hhhyyhhh", "w.sese.w", "w.ssss.w", "yccccccy", "sccyyccs", ".cccccc."],
+    'merchant': ["..hhhh..", ".hhhhhh.", "..sese..", ".ddssdd.", "cccyyccc", "sccccccs", "cccccccc"],
 }
 CREW_LEGS = {
     'brute': (["pppppppp", ".pp..pp.", ".bb..bb."], ["pppppppp", "..pp.pp.", "..bb.bb."]),
@@ -201,7 +229,9 @@ CREW_PAL = {
     'pirate': dict(h='#c0392b', c='#3b3846', p='#4f2e1b'),
     'brute': dict(h='#14101a', c='#7a2a2a', p='#2e1a10'),
     'ghost': dict(h='#4f6b5a', c='#7fc9a3', p='#7fc9a3'),
-    'dread': dict(h='#14101a', c='#5a1a3a', p='#14101a'),
+    'marine': dict(h='#14101a', c='#c0392b', p='#e8e2d0'),
+    'admiral': dict(h='#14101a', c='#1d2f6b', p='#e8e2d0'),
+    'merchant': dict(h='#3f8f4a', c='#7a4ea3', p='#4f2e1b'),
 }
 COMMON = dict(e='#14101a', y='#e8b33a', w='#f4f1e8', r='#d9453b', g='#3f8f4a', k='#3b3846',
               n='#7a4a2a', d='#2e1a10', b='#2e1a10')
@@ -219,15 +249,28 @@ def make_sprite(rows, colors):
     return s
 
 
-def crew_sprite(cls, skin=0, frame=0, flip=False):
-    key = (cls, skin, frame, flip)
+def crew_sprite(cls, skin=0, frame=0, flip=False, pose='stand'):
+    """pose: 'stand' (frame 0/1 = legs) or 'climb' (seen from behind, frame 0/1 = which arm is up)."""
+    key = (cls, skin, frame, flip, pose)
     spr = _spr_cache.get(key)
     if spr is None:
         cols = {k: hexc(v) for k, v in COMMON.items()}
         cols.update({k: hexc(v) for k, v in CREW_PAL.get(cls, CREW_PAL['pirate']).items()})
         cols['s'] = hexc('#e8eef0') if cls == 'ghost' else SKINS[skin % 4]
+        cols['H'] = hexc('#3b2a20') if cls not in ('ghost', 'surgeon') else cols['s']
         legs = CREW_LEGS.get(cls, (LEGS_A, LEGS_B))[frame % 2]
         rows = CREW_SPR.get(cls, CREW_SPR['pirate']) + legs
+        if pose == 'climb':
+            rows = list(rows)
+            rows[2] = ''.join('H' if ch in 'ser' else ch for ch in rows[2])
+            rows[3] = ''.join('H' if ch in 'serd' else ch for ch in rows[3])
+            rows[5] = ''.join('c' if ch == 's' else ch for ch in rows[5])
+            arm = list(rows[1 if frame % 2 == 0 else 3])
+            arm[0] = 's'
+            rows[1 if frame % 2 == 0 else 3] = ''.join(arm)
+            arm = list(rows[3 if frame % 2 == 0 else 1])
+            arm[7] = 's'
+            rows[3 if frame % 2 == 0 else 1] = ''.join(arm)
         spr = make_sprite(rows, cols)
         if flip:
             spr = pygame.transform.flip(spr, True, False)
@@ -249,6 +292,7 @@ ICON_ROWS = {
     'nest': [".........", ".........", "...www...", ".wwkkkww.", "wwkkukkww", ".wwkkkww.", "...www...",
              ".........", "........."],
     'skull': [".wwwww.", "wwwwwww", "wkwwwkw", "wkwwwkw", "wwwkwww", ".wwwww.", ".w.w.w."],
+    'crown': ["y..y..y", "yy.y.yy", "yyyyyyy", "yryyyuy", "yyyyyyy"],
     'anchor': ["...k...", "..k.k..", "...k...", ".kkkkk.", "...k...", "k..k..k", ".kkkkk."],
     'rum': [".dddd.", "dyyyyd", "dddddd", "dddddd", "dyyyyd", ".dddd."],
     'coin': [".yyyy.", "yyddyy", "ydyyyy", "ydyyyy", "yyddyy", ".yyyy."],
@@ -275,17 +319,40 @@ def icon(name, tint=None):
 # Backgrounds
 # ---------------------------------------------------------------------------
 def draw_sea(surf, t, top=0):
+    """Animated sea: slow swells, bobbing wave crests that drift, and twinkling glints."""
     surf.fill(P['deep'], (0, top, W, H - top))
-    for row in range(top + 4, H, 11):
-        k = row // 11
-        speed = 10 * (1 + (k % 3) * 0.35)
-        off = (t * speed + k * 37) % 44
-        c = P['sea'] if k % 2 else P['sea2']
-        for x in range(-44, W + 44, 44):
-            xx = int(x + off) if k % 2 else int(x - off + 22)
-            yy = row + int(math.sin(t * 1.4 + x * 0.05 + k) * 1.5)
-            pygame.draw.line(surf, c, (xx, yy), (xx + 7, yy))
-            pygame.draw.line(surf, c, (xx + 2, yy - 1), (xx + 4, yy - 1))
+    # swells: broad bands of lighter water that roll slowly downward
+    for k in range(6):
+        y = top + int((k * 70 + t * 6) % (H - top + 70)) - 35
+        for dy in range(0, 26, 2):
+            yy = y + dy + int(math.sin(t * 0.8 + k + dy * 0.2) * 2)
+            if top <= yy < H:
+                pygame.draw.line(surf, (17, 49, 88), (0, yy), (W, yy))
+    # crests
+    for row in range(top + 5, H, 10):
+        k = row // 10
+        direction = 1 if k % 2 else -1
+        speed = 7 + (k % 3) * 3
+        off = (t * speed * direction + k * 53) % 48
+        light = k % 3 == 0
+        for x in range(-48, W + 48, 48):
+            xx = int(x + off) + (k * 17) % 24
+            ph = t * 2.2 + x * 0.09 + k * 1.7
+            yy = row + int(round(math.sin(ph) * 1.6))
+            ln = 5 + int((math.sin(ph * 0.5) + 1) * 2.5)
+            c = P['sea2'] if light else P['sea']
+            pygame.draw.line(surf, c, (xx, yy), (xx + ln, yy))
+            pygame.draw.line(surf, c, (xx + 1, yy - 1), (xx + ln - 2, yy - 1))
+            if light and math.sin(ph) > 0.6:
+                surf.set_at((xx + ln // 2, yy - 2), P['foam'])
+            pygame.draw.line(surf, P['night'], (xx + 1, yy + 1), (xx + ln - 1, yy + 1))
+    # glints
+    for i in range(26):
+        gx = (i * 97 + int(t * 3) * 31) % W
+        gy = top + (i * 53 + int(t * 3) * 17) % max(1, H - top)
+        if (i + int(t * 6)) % 5 == 0:
+            surf.set_at((gx, gy), P['foam'])
+            surf.set_at((gx + 1, gy), P['lblue'])
 
 
 _fog_layer = None
@@ -315,6 +382,60 @@ def draw_fog(surf, t, alpha_mul=1.0):
     off = int(t * 8) % (W * 2)
     surf.blit(layer, (-off, 0))
     surf.blit(layer, (W * 2 - off, 0))
+
+
+def draw_boat(surf, x, y, f, t, scale=1, flag='rebel'):
+    """Side-view pixel sloop for the sea chart. (x, y) is the waterline centre; f = facing (+1 right)."""
+    sc = scale
+    bob = math.sin(t * 3) * 1.2
+    y = y + bob
+    hull = [(-11, -1), (11, -1), (8, 4), (-8, 4)]
+    hull = [(x + hx * sc * f, y + hy * sc) for hx, hy in hull]
+    bow = (x + 14 * sc * f, y - 3 * sc)
+    pygame.draw.polygon(surf, P['wood1'], hull + [bow] if f > 0 else [bow] + hull)
+    pygame.draw.polygon(surf, P['wood1'], [hull[1], bow, hull[2]] if f > 0 else [hull[0], bow, hull[3]])
+    pygame.draw.line(surf, P['teal'], (x - 10 * sc, y + 1 * sc), (x + 10 * sc, y + 1 * sc))
+    pygame.draw.lines(surf, P['wood0'], True, hull, 1)
+    for i in (-6, -2, 2, 6):
+        surf.set_at((int(x + i * sc * f), int(y + 2 * sc)), P['wood0'])
+    # mast
+    mx = x + 1 * sc * f
+    pygame.draw.line(surf, P['wood0'], (mx, y - 1), (mx, y - 19 * sc), max(1, sc))
+    # mainsail with a belly that breathes in the wind
+    belly = 3 + math.sin(t * 2.2) * 1.0
+    main = [(mx - 1 * f, y - 18 * sc), (mx - 1 * f, y - 3 * sc), (mx - (10 + belly) * sc * f, y - 3 * sc),
+            (mx - (8 + belly) * sc * f, y - 11 * sc)]
+    pygame.draw.polygon(surf, (240, 233, 212), main)
+    pygame.draw.polygon(surf, (180, 168, 140), main, 1)
+    pygame.draw.line(surf, (210, 200, 175), (mx - 5 * sc * f, y - 15 * sc), (mx - 5 * sc * f, y - 4 * sc))
+    # jib
+    jib = [(mx + 1 * f, y - 17 * sc), (mx + 1 * f, y - 3 * sc), (mx + (11 + belly * 0.6) * sc * f, y - 3 * sc)]
+    pygame.draw.polygon(surf, (240, 233, 212), jib)
+    pygame.draw.polygon(surf, (180, 168, 140), jib, 1)
+    # boom & flag
+    pygame.draw.line(surf, P['wood1'], (mx, y - 3 * sc), (mx - 11 * sc * f, y - 3 * sc))
+    for i in range(6):
+        wy = int(math.sin(t * 8 - i * 0.8) * 1)
+        col = (47, 110, 58) if flag == 'rebel' else (38, 56, 140)
+        for j in range(4):
+            c = (200, 210, 220) if (flag == 'rebel' and j in (1, 2) and 1 <= i <= 3) else col
+            surf.set_at((int(mx - i * f), int(y - 22 * sc + j + wy)), c)
+    pygame.draw.line(surf, P['wood0'], (mx, y - 22 * sc), (mx, y - 18 * sc))
+
+
+def portrait(surf, cls, skin, x, y, scale=3, bg=None, frame=None, t=0.0):
+    """A framed, scaled-up crew portrait. Returns its rect."""
+    w, h = 8 * scale + 8, 10 * scale + 8
+    r = pygame.Rect(x, y, w, h)
+    pygame.draw.rect(surf, bg or P['navy2'], r)
+    pygame.draw.rect(surf, P['sea'], (x + 1, y + h - 8, w - 2, 7))
+    spr = crew_sprite(cls, skin, 0)
+    img = pygame.transform.scale(spr, (8 * scale, 10 * scale))
+    bob = int(math.sin(t * 2 + skin) * 1) if t else 0
+    surf.blit(img, (x + 4, y + 4 + bob))
+    pygame.draw.rect(surf, frame or P['gold'], r, 1)
+    pygame.draw.rect(surf, P['black'], r.inflate(2, 2), 1)
+    return r
 
 
 def dim(surf, alpha=140):
