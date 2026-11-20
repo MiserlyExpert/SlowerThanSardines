@@ -14,6 +14,16 @@ aiming cannons at enemy rooms. Ships are shown **side-on as cutaways**, with dec
 ![Combat](docs/combat_brig.png)
 ![Shipyard](docs/hangar_sardine.png)
 
+## Download & play
+
+Grab the latest build from the **[Releases page](https://github.com/MiserlyExpert/SlowerThanSardines/releases/latest)**:
+
+- **Windows:** download `SlowerThanSardines-Windows.exe` and double-click it. No install, no Python.
+  Windows may show "Windows protected your PC" because the game isn't code-signed; click
+  **More info → Run anyway**.
+- **macOS:** download the macOS zip, unzip, then right-click the app and choose **Open**.
+- **Linux:** download the tarball, extract, and run `./SlowerThanSardines`.
+
 ## Features
 
 - **Side-view cutaway ships.** Crow's nest, open top deck, gun deck, captain's quarters, galley,

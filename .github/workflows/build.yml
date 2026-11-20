@@ -34,8 +34,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt pyinstaller
-      - run: pyinstaller --noconfirm --onefile --windowed --name SlowerThanSardines --exclude-module pkg_resources main.py
+      - run: pip install -r requirements.txt pyinstaller pillow
+      - run: pyinstaller --noconfirm --onefile --windowed --name SlowerThanSardines --icon assets/icon.png --exclude-module pkg_resources main.py
       - name: Package
         shell: bash
         run: |
@@ -43,7 +43,7 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             zip -qr ../SlowerThanSardines-macOS.zip SlowerThanSardines.app
           elif [ "$RUNNER_OS" = "Windows" ]; then
-            7z a ../SlowerThanSardines-Windows.zip SlowerThanSardines.exe > /dev/null
+            cp SlowerThanSardines.exe ../SlowerThanSardines-Windows.exe
           else
             tar czf ../SlowerThanSardines-Linux.tar.gz SlowerThanSardines
           fi
@@ -66,3 +66,9 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
+          body: |
+            **Windows:** download `SlowerThanSardines-Windows.exe` and double-click it. No install needed.
+            (Windows may say "Windows protected your PC" because the game isn't code-signed: click **More info → Run anyway**.)
+
+            **macOS:** download the macOS zip, unzip, right-click the app → Open.
+            **Linux:** download the Linux tarball, extract, run `./SlowerThanSardines`.
