@@ -12,7 +12,8 @@ It plays like FTL: real-time-with-pause battles, managing power, sending crew ar
 aiming cannons at enemy rooms. Ships are shown **side-on as cutaways**, with decks, ladders and stairs.
 
 ![Combat](docs/combat_brig.png)
-![Shipyard](docs/hangar_sardine.png)
+![Ship select](docs/hangar_sardine.png)
+![Harbor](docs/harbor_shipyard.png)
 
 ## Download & play
 
@@ -26,29 +27,25 @@ Grab the latest build from the **[Releases page](https://github.com/MiserlyExper
 
 ## Features
 
-- **Side-view cutaway ships.** Crow's nest, open top deck, gun deck, captain's quarters, galley,
-  mess hall, sick bay, carpenter's shop, cargo hold and powder magazine. Crew walk the decks, climb
-  ladders, take the stairs, and go up the rigging to the crow's nest, with animations for each.
-- **Broadside battles.** Your ship in the foreground, the enemy alongside in the background, with
-  cannonballs arcing between them. Cannons fire with muzzle flash, recoil and smoke. A sunk enemy
-  **cracks in half** and slides under the waves.
-- **Flooding.** Leaks below the waterline flood fast. Water pours down hatches into the lower decks,
-  drowns crew, shorts out systems, and makes the ship sit lower and handle worse. Crew patch leaks.
-- **Fire.** Fire spreads room to room. If the powder magazine burns for too long, it explodes.
-- **Fog of war.** You can't see inside an enemy ship unless your Crow's Nest (telescope) is working,
-  or your boarders are aboard it.
-- **Boarding.** Buy Grappling Hooks in port, then swing crew from your top deck onto the enemy's and
-  fight your way down through the decks.
-- **Six unlockable ships**, each with its own layout and crew: The Plucky Sardine (rebels),
-  The Rusty Cutlass (pirates), HMS Turncoat (Royal deserters), The Floating Tavern (three drunks and
-  a cook), The Rum Runner (smugglers) and The Damp Mary (ghosts). Pick your starting crew.
-- **A crew with opinions.** Captains are the best at the helm. The **Drunkard is the best gunner and
-  the best brawler**, and walks like the deck is always moving. Many classes unlock special event options.
-- **15 cannons**, tagged by what they're good at: MULTI-shot, FAST reload, FIRE, HULL damage,
-  LOB (ignores bulwarks), CREW damage and RIGGING damage.
-- **Fog banks** take two days to cross, so the Armada gains twice as fast.
-- **About 35 hand-written events**, a custom pixel font, all art drawn in code, and synthesized audio
-  (including a chiptune *Drunken Sailor*).
+- **Side-view cutaway ships** with a crow's nest, an open top deck and decks below, joined by ladders,
+  stairs and rigging. Every room is labelled and colour-coded, and every room does something.
+- **Systems and modules.** Helm, Sails, Gun Deck, Bulwarks, Sick Bay and Crow's Nest, plus modules
+  you install into empty slots in port: Galley, Cargo Hold, Powder Magazine, Armory (boarding),
+  Brig (prisoners), Chart Room, Bar and Crypt. Every room can be upgraded.
+- **Hands, not power.** Each sailor brings Hands that you assign to stations. Lose crew and you lose
+  their Hands.
+- **Broadside battles**, real time with pause. Numbered target markers, warnings on rooms the enemy is
+  aiming at, flashes on hits, muzzle flash, recoil and smoke. A sunk enemy cracks in half and goes under.
+- **Hazards.** Fire spreads room to room; holes in the hull drain it until patched; a burning powder
+  magazine explodes.
+- **Boarding.** With an Armory, swing crew from your top deck onto the enemy's and fight down
+  through the decks.
+- **Island harbors.** Sail into port to buy supplies and cannons, trade goods between ports (prices
+  differ everywhere), hire crew at the tavern, and upgrade rooms at the shipyard.
+- **Six unlockable ships**, each with its own layout and modules, and a choosable starting crew.
+- **15 cannons**, tagged MULTI, FAST, FIRE, HULL, LOB, CREW and RIGGING.
+- **A soundtrack** of six tunes chosen by situation, with quiet stretches of waves, gulls, creaking
+  timber and bells in between. All art and audio are generated in code.
 
 ## Running from source
 

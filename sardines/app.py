@@ -94,6 +94,7 @@ class App:
             else:
                 self.top.handle(e)
         self.top.update(dt)
+        audio.update(dt)
         self.draw()
 
     def run(self):

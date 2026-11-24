@@ -86,19 +86,46 @@ def test_boarding_and_flooding():
     assert n >= 1, 'nobody could board'
     assert any(c.side == 'player' for c in enemy.crew)
     assert len(gs.crew) == 3       # crew aboard the enemy still count as ours
-    # flooding: a breach below the waterline fills the room, and water pours down through hatches
+    # a hole in the hull slowly costs hull until it is patched
     low = max(gs.ship.rooms, key=lambda r: r.gy)
+    for c in list(gs.ship.crew):           # keep everyone out of that room so nobody patches it
+        if c.room == low.idx:
+            c.order_move(tops[0])
     low.breach = True
-    upper = next(r for r in gs.ship.rooms if r.gy == TOP_ROW + 1)
-    upper.water = 80
-    for _ in range(300):
+    hull0 = gs.ship.hull
+    for _ in range(30 * 13):
         b.update(1 / 30)
         if b.over:
             break
-    assert low.water > 20
+    assert gs.ship.hull < hull0 or not low.breach
     b.cleanup()
     gs.enemy = None
     assert all(c.ship is gs.ship for c in gs.crew)
+
+
+def test_every_room_has_a_purpose():
+    from sardines import data as d
+    for key, lay in d.LAYOUTS.items():
+        for kind, *_ in lay['rooms']:
+            assert kind in d.SYSTEMS or kind in d.MODULES or kind == 'empty', (key, kind)
+    gs = GameState(2)
+    ship = gs.ship
+    empties = ship.empty_rooms()
+    assert empties, 'the starting ship should have room to grow'
+    ship.install(empties[0].idx, 'armory')
+    assert ship.grapple
+    assert ship.module_level('galley') >= 1 and gs.cargo_cap() > d.BASE_CARGO
+
+
+def test_hands_follow_the_crew():
+    gs = GameState(5)
+    ship = gs.ship
+    before = ship.gusto
+    victim = gs.crew[-1]
+    victim.hp = 0
+    ship.update(0.01, None)
+    assert ship.gusto < before
+    assert ship.reactor_used() <= ship.gusto
 
 
 def test_sectors_connected():
@@ -141,6 +168,8 @@ def test_full_run_events():
             sec = gs.sector
             nxt = max(sec.neighbours(), key=lambda i: sec.nodes[i].x + random.random() * 80)
             ev, notes = gs.jump(nxt)
+            if not ev['choices']:
+                continue
             ch = random.choice([c for c in ev['choices'] if gs.meets(c.get('req', {}))] or ev['choices'])
             outs = [o for _, o in ch['outs']] if 'outs' in ch else [ch['out']]
             o = random.choice(outs)
@@ -160,7 +189,7 @@ def test_scenes_render():
     from sardines.scenes.map import MapScene
     from sardines.scenes.event import EventScene
     from sardines.scenes.combat import CombatScene
-    from sardines.scenes.store import StoreScene
+    from sardines.scenes.harbor import HarborScene
     from sardines.scenes.shipwright import ShipwrightScene
     from sardines.scenes.endings import GameOverScene, VictoryScene
     app = App()
@@ -232,10 +261,25 @@ def test_scenes_render():
             app.pop()
         if app.top is cs:
             app.pop()
-    app.push(StoreScene(app, gs.sector.node))
-    app.step(0.1)
-    if out:
-        pygame.image.save(app.screen, os.path.join(out, 'store.png'))
+    hs_ = HarborScene(app, gs.sector.node)
+    app.push(hs_)
+    for _ in range(200):
+        app.step(1 / 60)
+    for tab in ('Market', 'Trade', 'Tavern', 'Shipyard'):
+        hs_.set_tab(tab)
+        if tab == 'Shipyard':
+            hs_.sel_room = gs.ship.empty_rooms()[0].idx
+            hs_.build()
+        app.step(0.05)
+        if out:
+            pygame.image.save(app.screen, os.path.join(out, f'harbor_{tab.lower()}.png'))
+    gs.doubloons = 500
+    k = next(iter(data.GOODS))
+    hs_.set_tab('Trade')
+    before = gs.goods[k]
+    gs.goods[k] += 1
+    hs_.sell_good(k, 1)
+    assert gs.goods[k] == before
     app.pop()
     gs.cargo.append('carronade')
     app.push(ShipwrightScene(app))

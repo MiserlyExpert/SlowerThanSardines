@@ -18,6 +18,7 @@ class Room:
         self.breach = False
         self.breach_prog = 0.0
         self.exploded = False
+        self.level = 1
 
     @property
     def open_air(self):
@@ -27,7 +28,9 @@ class Room:
     def title(self):
         if self.sys:
             return data.SYSTEMS[self.sys]['title']
-        return data.FLAVOR.get(self.kind, self.kind.title())
+        if self.kind == 'empty':
+            return "Empty slot"
+        return data.MODULES.get(self.kind, {}).get('title', self.kind.title())
 
     def tiles(self):
         return [(self.gx + i, self.gy) for i in range(self.w)]
@@ -38,7 +41,7 @@ class Room:
 
     @property
     def floor_y(self):
-        return (self.gy + 1) * RH - 2
+        return (self.gy + 1) * RH - 3
 
     def tile_center(self, k):
         return ((self.gx + k + 0.5) * TW, self.floor_y)
@@ -74,10 +77,7 @@ class System:
         return max(0, self.level - self.damage)
 
     def eff(self):
-        e = self.intact if self.sub else min(self.power, self.intact)
-        if self.flooded and e > 0:
-            e -= 1
-        return e
+        return self.intact if self.sub else min(self.power, self.intact)
 
 
 class Weapon:
@@ -220,13 +220,14 @@ class Ship:
                 if levels.get(kind_, 0) > 0:
                     sysn = kind_
                 else:
-                    kind_ = data.SYS_FALLBACK.get(kind_, 'hold')
+                    kind_ = 'empty'
             self.rooms.append(Room(len(self.rooms), kind_, gx, gy, w, sysn))
         self.masts = list(lay.get('masts', []))
         self.sys = {r.sys: System(r.sys, levels[r.sys]) for r in self.rooms if r.sys}
         self.sys_room = {r.sys: r.idx for r in self.rooms if r.sys}
         self.hull = self.hull_max = hull
-        self.gusto = gusto
+        self._gusto = gusto
+        self.hands_bonus = 0
         self.weapons = [Weapon(k) for k in weapons]
         self.crew = []
         self.facing = 1
@@ -237,7 +238,7 @@ class Ship:
         self.manning = {}
         self.ammo = 8   # enemies only
         self.recoil = {}
-        self.grapple = False
+        self._grapple = None
         self.faction = data.ENEMIES[kind].get('faction', 'pirate') if kind in data.ENEMIES else 'rebel'
         self._build_graph(lay.get('links', []))
 
@@ -312,6 +313,28 @@ class Ship:
                     pts.append((*top, 'stairs'))
         return pts
 
+    # -- modules --
+    def module_level(self, kind):
+        return max([r.level for r in self.rooms if r.kind == kind] or [0])
+
+    @property
+    def grapple(self):
+        if self._grapple is not None:
+            return self._grapple
+        return self.module_level('armory') > 0
+
+    @grapple.setter
+    def grapple(self, v):
+        self._grapple = v
+
+    def empty_rooms(self):
+        return [r for r in self.rooms if r.kind == 'empty' and not r.sys]
+
+    def install(self, room_idx, kind):
+        r = self.rooms[room_idx]
+        r.kind, r.level = kind, 1
+        self._props = None
+
     def top_rooms(self):
         return [r.idx for r in self.rooms if r.gy == TOP_ROW]
 
@@ -342,6 +365,52 @@ class Ship:
 
     def crew_in(self, room_idx, side=None):
         return [c for c in self.crew if c.alive and c.cur_room() == room_idx and (side is None or c.side == side)]
+
+    # -- hands (the crew's effort, assigned to stations) --
+    @property
+    def gusto(self):
+        if self.side != 'player':
+            return self._gusto
+        return self.hands_total()
+
+    @gusto.setter
+    def gusto(self, v):
+        self._gusto = v
+
+    def hands_total(self):
+        own = [c for c in self.crew if c.alive and c.side == 'player']
+        bonus = self.hands_bonus + self.module_level('galley')
+        return sum(data.HANDS.get(c.cls, 3) for c in own) + bonus
+
+    def room_level_bonus(self, kind):
+        return sum(getattr(r, 'level', 1) - 1 for r in self.rooms if r.kind == kind)
+
+    def balance_hands(self):
+        """When crew die or leave, stations lose Hands; when Hands return, they are restored."""
+        if self.side != 'player':
+            return
+        order = ['sickbay', 'sails', 'bulwark']
+        while self.reactor_used() > self.gusto:
+            for name in order:
+                s = self.sys.get(name)
+                if s and s.power > 0:
+                    s.power -= 1
+                    break
+            else:
+                for w in reversed(self.weapons):
+                    if w.powered:
+                        self.unpower_weapon(w, auto=True)
+                        break
+                else:
+                    break
+        if self.reactor_free() > 0:
+            for name in ('bulwark', 'sails', 'sickbay'):
+                s = self.sys.get(name)
+                if s:
+                    self.restore_power(s)
+            g = self.sys.get('guns')
+            if g:
+                self.restore_power(g)
 
     # -- power --
     def reactor_used(self):
@@ -442,8 +511,7 @@ class Ship:
         return self.manning.get(name)
 
     def flood_frac(self):
-        below = [r for r in self.rooms if not r.open_air]
-        return sum(r.water * r.w for r in below) / (100.0 * max(1, sum(r.w for r in below)))
+        return 0.0
 
     def evasion(self, fog=False):
         helm, sails = self.sys.get('helm'), self.sys.get('sails')
@@ -456,7 +524,6 @@ class Ship:
         sailor = self.manned('sails')
         if sailor:
             ev += sailor.skill('sails')
-        ev -= 20 * self.flood_frac()
         if fog:
             ev *= 0.5
         return int(max(0, min(60, ev)))
@@ -476,9 +543,7 @@ class Ship:
     # -- simulation --
     def update(self, dt, battle):
         self._update_hazards(dt, battle)
-        for r in self.rooms:
-            if r.sys:
-                self.sys[r.sys].flooded = r.water > 55
+        self.balance_hands()
         self._update_crew(dt, battle)
         # bulwarks regrow
         ml = self.max_layers()
@@ -519,46 +584,21 @@ class Ship:
                 battle.emit('death', ship=self, crew=c)
 
     def waterline_row(self):
-        """Rows at or below this index are under the sea's surface."""
         return TOP_ROW + 2
 
     def _update_hazards(self, dt, battle):
         rooms = self.rooms
-        delta = [0.0] * len(rooms)
-        wl = self.waterline_row()
         for r in rooms:
             if r.breach and not r.open_air:
-                rate = 11 if r.gy >= wl else 4      # below the waterline the sea pours in
-                delta[r.idx] += rate * dt
-            elif r.water > 0 and r.gy < wl and not any(rooms[n].gy > r.gy for n in self.adj[r.idx]):
-                delta[r.idx] -= 3 * dt                # scuppers
-            elif r.water > 0:
-                delta[r.idx] -= 1.2 * dt              # pumps, slowly
-            if r.open_air and r.water > 0:
-                delta[r.idx] -= 40 * dt               # top deck: it just runs overboard
-        for (a_, b_), info in self.edges.items():
-            if a_ > b_:
-                continue
-            A, B = rooms[a_], rooms[b_]
-            if info[0] == 'door':
-                diff = A.water - B.water
-                if abs(diff) > 4:
-                    f = diff * 0.25 * dt
-                    delta[a_] -= f
-                    delta[b_] += f
-            else:
-                up, lo = (A, B) if A.gy < B.gy else (B, A)
-                if up.water > 0 and lo.water < 100:   # water pours down hatches
-                    f = min(up.water, 30 * dt)
-                    delta[up.idx] -= f
-                    delta[lo.idx] += f * 0.8
-        for r in rooms:
-            r.water = max(0.0, min(100.0, r.water + delta[r.idx]))
+                # a hole in the hull: the ship slowly takes on damage until it is patched
+                r.leak_t = getattr(r, 'leak_t', 0.0) + dt
+                if r.leak_t >= 12.0:
+                    r.leak_t = 0.0
+                    self.hull = max(0, self.hull - 1)
+                    if battle:
+                        battle.emit('leak', ship=self, room=r.idx)
             if r.fire > 0:
-                if r.water > 35:
-                    r.fire = max(0.0, r.fire - 45 * dt)
-                else:
-                    r.fire = min(100.0, r.fire + 7 * dt)
+                r.fire = min(100.0, r.fire + 7 * dt)
                 if r.sys:
                     s = self.sys[r.sys]
                     if s.intact > 0:
@@ -580,13 +620,10 @@ class Ship:
                     c.hp -= 4 * dt * (0.4 + r.fire / 160)
                 for n in self.adj[r.idx]:
                     nb = rooms[n]
-                    if nb.fire <= 0 and nb.water < 35 and random.random() < dt * 0.035 * (r.fire / 100):
+                    if nb.fire <= 0 and random.random() < dt * 0.035 * (r.fire / 100):
                         nb.fire = 10.0
                         if battle:
                             battle.emit('fire', ship=self, room=nb.idx)
-            if r.water > 65:
-                for c in self.crew_in(r.idx):
-                    c.hp -= 2.5 * dt
 
     def _update_crew(self, dt, battle):
         self.manning = {}
@@ -604,7 +641,7 @@ class Ship:
                 if c.foe not in foes:
                     c.foe = random.choice(foes)
                 c.task = 'fight'
-                c.foe.hp -= c.skill('fight') * dt * (1.5 if getattr(c, 'axes', False) else 1.0)
+                c.foe.hp -= c.skill('fight') * dt * getattr(c, 'melee', 1.0)
                 continue
             c.foe = None
             rep = c.skill('repair')
@@ -655,18 +692,8 @@ def make_player_ship(rng=random, key='sardine', crew=None):
                 weapons=list(d['weapons']), side='player', kind=None)
     ship.faction = d['faction']
     ship.key = key
-    # power: bulwarks first, then sails, then sick bay, then cannons
-    for name in ('bulwark', 'sails', 'sickbay'):
-        if name in ship.sys:
-            while ship.add_power(name):
-                if ship.reactor_free() <= sum(w.power for w in ship.weapons) and name != 'bulwark':
-                    break
-    for w in ship.weapons:
-        if not ship.power_weapon(w):
-            for name in ('sickbay', 'sails'):
-                if name in ship.sys and ship.sys[name].power > 1 and ship.remove_power(name):
-                    if ship.power_weapon(w):
-                        break
+    ship.hands_bonus = d.get('hands_bonus', 0)
+    # crew first: their Hands are what powers the stations
     stations = [s for s in ('helm', 'guns', 'sails', 'bulwark', 'nest', 'sickbay') if s in ship.sys_room]
     classes = crew or d['crew']
     # put each crew member on the station they are best at, captain on the helm first
@@ -683,6 +710,17 @@ def make_player_ship(rng=random, key='sardine', crew=None):
                 used.add(st)
                 break
         ship.place(c, room, rng)
+    # assign Hands: bulwarks (in pairs), then cannons, then sails, then the sick bay
+    b = ship.sys.get('bulwark')
+    if b:
+        while b.power + 2 <= b.level and ship.reactor_free() >= 2:
+            ship.add_power('bulwark')
+            ship.add_power('bulwark')
+    for w in ship.weapons:
+        ship.power_weapon(w)
+    for name in ('sails', 'sickbay'):
+        while name in ship.sys and ship.add_power(name):
+            pass
     return ship
 
 
@@ -701,6 +739,16 @@ def make_enemy(key, sector_idx, rng=random):
         lv['guns'] = lv.get('guns', 1) + 1
     ship = Ship(rng.choice(t['names']), t['layout'], hull, lv, gusto=99, weapons=weapons,
                 side='enemy', mirror=False, kind=key)
+    # fill empty compartments with modules that matter in a fight (or for loot)
+    wants = []
+    if t.get('grapple', 0) > 0:
+        wants.append('armory')
+    if any(data.WEAPONS[w].get('ammo') for w in weapons):
+        wants.append('magazine')
+    wants += ['hold', 'brig']
+    for r in ship.rooms:
+        if r.kind == 'empty' and not r.open_air and wants:
+            r.kind = wants.pop(0)
     ship.autopower()
     ship.shield_layers = ship.max_layers()
     crew_list = list(t['crew'])

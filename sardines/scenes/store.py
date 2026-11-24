@@ -92,16 +92,6 @@ class StoreScene(Scene):
         if missing > 1:
             cost = 3 * missing - missing // 4
             rows.append(('heart', f"Repair all (+{missing})", cost, repair(missing), True))
-        if not ship.grapple:
-            def hooks():
-                ship.grapple = True
-                self.msg = "Grappling hooks! Select crew on your top deck in battle and press Board."
-            rows.append(('anchor', "Grappling Hooks", 60, hooks, True))
-        if not getattr(gs, 'axes', False):
-            def axes():
-                gs.axes = True
-                self.msg = "Boarding axes. Your crew now hits 50% harder in a brawl. Please be careful."
-            rows.append(('bolt', "Boarding Axes", 45, axes, True))
         y = 102
         for ic, label, price, fn, ok in rows:
             self.supplies.append((ic, label, y))

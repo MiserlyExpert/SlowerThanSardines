@@ -14,15 +14,18 @@ from .hud import draw_resources, tooltip
 TASK_LABEL = dict(man='Manning', repair='Repairing', patch='Patching', fire='Firefighting',
                   fight='Brawling!', walk='Walking', idle='Idle', sabotage='Sabotage')
 
-SYS_X0 = 36
-SYS_W = 30
-WEAP_X0 = 228
-WEAP_W = 74
-PANEL_Y = 252
-HORIZON = 74
-PLAYER_WL, ENEMY_WL = 202, 100
-CREW_X = 534
-BANNER_X, BANNER_Y = 150, 100
+PANEL_Y = 288             # top of the control bar
+HANDS_X = 2
+SYS_X0 = 34
+SYS_W = 27
+WEAP_X0 = 200
+WEAP_W = 68
+RIGHT_X = 474
+HORIZON = 112
+PLAYER_O = (20, 132)      # player ship grid origin
+ENEMY_OY = 34
+CHIP_W = 30
+BANNER_Y = 88
 
 
 class SinkFx:
@@ -34,7 +37,7 @@ class SinkFx:
         b.top -= 30
         b.height += 30
         self.base = b.topleft
-        self.waterline = oy + render.WATERLINE
+        self.waterline = oy + max(r.floor_y for r in ship.rooms) + 5
         full = pygame.Surface(b.size, pygame.SRCALPHA)
         render.draw_ship(full, ship, ox - b.left, oy - b.top, t, interior=interior, sea=False, overlay=False)
         rng = random.Random(7)
@@ -123,10 +126,12 @@ class CombatScene(Scene):
         p = self.gs.ship
         e = enemy
         self.gs.enemy = enemy
-        self.player_base = (26, PLAYER_WL - render.WATERLINE)
-        self.enemy_base = (522 - e.gw * T - 46, ENEMY_WL - render.WATERLINE)
-        self.board_btn = gfx.Button((534, 324, 48, 18), "Board [B]", self.board, size=14)
-        self.recall_btn = gfx.Button((586, 324, 48, 18), "Recall", self.recall, size=14)
+        self.player_base = PLAYER_O
+        self.enemy_base = (W - 8 - e.gw * T - 60, ENEMY_OY)
+        self.board_btn = gfx.Button((RIGHT_X + 2, 334, 78, 16), "Board [B]", self.board, size=14)
+        self.recall_btn = gfx.Button((RIGHT_X + 84, 334, 76, 16), "Recall", self.recall, size=14)
+        self.hit_flash = {}
+        self.hover_crew = None
         p.recoil, e.recoil = {}, {}
         self.muzzles = []
         self.smoke = []
@@ -135,20 +140,21 @@ class CombatScene(Scene):
         if fog:
             self.say_banner("Fog! Everyone's evasion is halved. Escape is slow.", P['fog'])
         self.sink = None
-        self.flee_btn = gfx.Button((534, 292, 100, 18), "Make Sail!", self.flee, size=14)
+        self.flee_btn = gfx.Button((RIGHT_X + 2, 312, 160, 16), "Make Sail!", self.flee, size=14)
         self.souls = []
         audio.play('bell')
+        audio.set_mood('boss' if boss else 'battle')
 
     # ------------------------------------------------------------------
     @property
     def porig(self):
         bx, by = self.player_base
-        return bx, by + int(math.sin(self.t * 1.3) * 1.5 + self.gs.ship.flood_frac() * 8)
+        return bx, by + int(math.sin(self.t * 1.3) * 1.5)
 
     @property
     def eorig(self):
         bx, by = self.enemy_base
-        return bx, by + int(math.sin(self.t * 1.3 + 1) * 1.5 + self.enemy.flood_frac() * 8)
+        return bx, by + int(math.sin(self.t * 1.3 + 1) * 1.5)
 
     def origin_of(self, ship):
         return self.porig if ship is self.gs.ship else self.eorig
@@ -159,7 +165,10 @@ class CombatScene(Scene):
             audio.play('board')
             self.say_banner(f"{n} crew swing across on grappling lines! Fight your way down!", P['gold'])
         else:
-            self.say_banner("Select crew standing on your TOP DECK to board.", P['orange'])
+            if not self.gs.ship.grapple:
+                self.say_banner("You need Grappling Hooks (sold in port) to board.", P['orange'])
+            else:
+                self.say_banner("Select crew, send them to your TOP DECK, then press Board.", P['orange'])
 
     def recall(self):
         n = self.battle.player_recall()
@@ -205,16 +214,16 @@ class CombatScene(Scene):
             audio.play('splash')
 
     def weapon_rect(self, i):
-        return pygame.Rect(WEAP_X0 + i * WEAP_W, 290, WEAP_W - 4, 60)
+        return pygame.Rect(WEAP_X0 + i * WEAP_W, PANEL_Y + 14, WEAP_W - 4, 54)
 
     def sys_rect(self, i):
-        return pygame.Rect(SYS_X0 + i * SYS_W, PANEL_Y + 4, SYS_W - 2, 100)
+        return pygame.Rect(SYS_X0 + i * SYS_W, PANEL_Y + 12, SYS_W - 2, 58)
 
     def sys_names(self):
         return [n for n in data.SYS_ORDER if n in self.gs.ship.sys]
 
     def crew_list_rect(self, i):
-        return pygame.Rect(CREW_X, 28 + i * 23, W - CREW_X - 4, 21)
+        return pygame.Rect(4 + i * (CHIP_W + 2), 26, CHIP_W, 36)
 
     def handle(self, e):
         gs, ship, b = self.gs, self.gs.ship, self.battle
@@ -329,7 +338,8 @@ class CombatScene(Scene):
         w = ship.weapons[i]
         if not w.powered:
             if not ship.power_weapon(w):
-                self.say_banner("Not enough Gusto or Gun Deck power!", P['orange'])
+                self.say_banner("Not enough free Hands, or the Gun Deck is full. Take Hands off another station.",
+                                P['orange'])
                 return
             audio.play('click')
             return
@@ -343,6 +353,11 @@ class CombatScene(Scene):
         m = pygame.mouse.get_pos()
         self.hover_room = render.room_at(self.gs.ship, *self.porig, m)
         self.hover_eroom = render.room_at(self.enemy, *self.eorig, m)
+        self.hover_crew = render.crew_at(self.gs.ship, *self.porig, m) or render.crew_at(self.enemy, *self.eorig, m)
+        for k in list(self.hit_flash):
+            self.hit_flash[k] -= dt
+            if self.hit_flash[k] <= 0:
+                del self.hit_flash[k]
         if not self.paused and not b.over:
             b.update(dt)
         if b.over:
@@ -411,6 +426,7 @@ class CombatScene(Scene):
                 pass
             elif k == 'hit':
                 audio.play('hit')
+                self.hit_flash[(id(ship), ev['room'])] = 0.45
                 self.burst(x, y, [P['orange'], P['yellow'], P['red'], P['wood2']], 16, 50)
                 if ev['dmg']:
                     self.floater(f"-{ev['dmg']}", x, y - 10, P['red'])
@@ -439,7 +455,9 @@ class CombatScene(Scene):
             elif k == 'pboard':
                 pass
             elif k == 'breach':
-                self.floater("LEAK!", x, y - 22, P['lblue'])
+                self.floater("HOLE IN THE HULL!", x, y - 22, P['lblue'])
+            elif k == 'leak':
+                self.floater("-1 leak", x, y - 6, P['lblue'])
             elif k == 'board':
                 audio.play('board')
                 self.say_banner(f"BOARDERS! {ev['n']} pirates swing aboard on ropes!", P['red'])
@@ -483,6 +501,7 @@ class CombatScene(Scene):
             if self.boss:
                 self.app.replace(VictoryScene(self.app))
                 return
+            gs.enemy_had_hold = self.enemy.module_level('hold') > 0
             loot = gs.loot(self.enemy_key, over)
             if self.win_bonus:
                 for k, v in self.win_bonus.items():
@@ -506,9 +525,19 @@ class CombatScene(Scene):
             text = text.replace('{enemy}', self.enemy.name)
             for u in unlocks:
                 text += "\n\n" + u
+            for g in getattr(b, 'risen', []):
+                text += f"\n\n{g.name} rises from the Crypt, slightly see-through but ready for duty."
             loot['text'] = "Spoils of war:"
-            ev = dict(id='loot', title='Victory!', text=text,
-                      choices=[dict(text="Collect the spoils.", out=loot)])
+            choices = [dict(text="Collect the spoils.", out=loot)]
+            if random.random() < gs.prisoner_chance():
+                faction = data.ENEMIES[self.enemy_key].get('faction')
+                cls = {'crown': 'marine', 'ghost': 'ghost'}.get(faction, 'pirate')
+                ransom = 15 + 8 * gs.sector_idx
+                text += f"\n\nYou've taken a prisoner and thrown them in the Brig. They look sheepish."
+                choices = [dict(text=f"Ransom the prisoner (+{ransom} doubloons).",
+                                out=dict(loot, doubloons=loot.get('doubloons', 0) + ransom)),
+                           dict(text="Offer the prisoner a job.", out=dict(loot, add_crew=cls))]
+            ev = dict(id='loot', title='Victory!', text=text, choices=choices)
             self.app.replace(EventScene(self.app, ev))
         elif over == 'fled':
             ev = dict(id='fled', text=random.choice([
@@ -523,33 +552,44 @@ class CombatScene(Scene):
             self.app.replace(EventScene(self.app, ev))
 
     # ------------------------------------------------------------------
+    def can_see(self):
+        nest = self.gs.ship.sys.get('nest')
+        boarded = any(c.side == 'player' for c in self.enemy.crew)
+        return bool((nest and nest.eff() >= 1) or boarded)
+
+    def room_rect(self, ship, idx):
+        ox, oy = self.origin_of(ship)
+        r = ship.rooms[idx]
+        return pygame.Rect(ox + r.gx * T, oy + r.gy * render.RH, r.w * T, render.RH)
+
     def draw(self, s):
         t = self.t
         gs, ship, en, b = self.gs, self.gs.ship, self.enemy, self.battle
         self._sky(s, t)
         gfx.draw_sea(s, t, HORIZON)
-        sx = int(random.uniform(-2, 2) * self.shake) if self.shake else 0
-        sy = int(random.uniform(-2, 2) * self.shake) if self.shake else 0
-        epan = pygame.Rect(6, 28, 200, 66)
         px, py = self.porig
-        px += sx
-        py += sy
+        if self.shake:
+            px += int(random.uniform(-2, 2) * self.shake)
+            py += int(random.uniform(-2, 2) * self.shake)
         ex, ey = self.eorig
-        targets = [w.target for w in ship.weapons if w.target is not None]
         see = self.can_see()
+        targets = [w.target for w in ship.weapons if w.target is not None]
+        boarders_aboard = any(c in self.selected and c.ship is en for c in self.selected)
         # the enemy is further away, so it is drawn first
         if self.sink:
             self.sink.draw(s, t)
         else:
             self._shields(s, en, ex, ey)
             render.draw_ship(s, en, ex, ey, t, interior=see, selected=self.selected,
-                             hover=self.hover_eroom if (self.aiming is not None or self.selected) else None,
-                             targets=targets)
+                             hover=self.hover_eroom if (self.aiming is not None or boarders_aboard) else None,
+                             targets=targets, hover_crew=self.hover_crew)
         if self.fog:
             gfx.draw_fog(s, t)
         self._shields(s, ship, px, py)
         render.draw_ship(s, ship, px, py, t, interior=True, selected=self.selected,
-                         hover=self.hover_room if self.selected else None)
+                         hover=self.hover_room if self.selected else None, hover_crew=self.hover_crew)
+        self._attack_markers(s, t)
+        self._boarding_hint(s, t)
         # projectiles
         for p in b.projectiles:
             if p['t'] < 0:
@@ -559,44 +599,44 @@ class CombatScene(Scene):
             x0, y0 = render.cannon_pos(src, *self.origin_of(src), p['slot'])
             x1, y1 = self.room_screen(dst, p['room'])
             lob = p['w'].get('pierce')
+            arc = 80 if lob else 34
             x = x0 + (x1 - x0) * k
-            y = y0 + (y1 - y0) * k - math.sin(math.pi * k) * (70 if lob else 28)
-            # trail
-            for j in range(1, 4):
-                kk = max(0.0, k - j * 0.025)
+            y = y0 + (y1 - y0) * k - math.sin(math.pi * k) * arc
+            for j in range(1, 5):
+                kk = max(0.0, k - j * 0.02)
                 tx = x0 + (x1 - x0) * kk
-                ty = y0 + (y1 - y0) * kk - math.sin(math.pi * kk) * (70 if lob else 28)
-                s.set_at((int(tx), int(ty)), (170, 170, 180) if j < 3 else (110, 110, 120))
-            if p['key'] == 'firebomb':
-                pygame.draw.circle(s, P['orange'], (int(x), int(y)), 3)
-                s.set_at((int(x), int(y) - 4), P['yellow'])
+                ty = y0 + (y1 - y0) * kk - math.sin(math.pi * kk) * arc
+                s.set_at((int(tx), int(ty)), (190, 190, 200) if j < 3 else (120, 120, 130))
+            r = 3 if src is ship else 4
+            if p['key'] in ('firebomb', 'hot_shot', 'brimstone'):
+                pygame.draw.circle(s, P['orange'], (int(x), int(y)), r)
+                s.set_at((int(x), int(y) - r - 1), P['yellow'])
             elif p['key'] == 'grapeshot':
-                for j in range(3):
-                    s.set_at((int(x) + j * 2 - 2, int(y) + (j % 2) * 2), P['lgrey'])
+                for j in range(4):
+                    s.set_at((int(x) + j * 2 - 3, int(y) + (j % 2) * 2), P['lgrey'])
             elif p['key'] == 'chain_shot':
-                pygame.draw.circle(s, P['black'], (int(x) - 3, int(y)), 2)
-                pygame.draw.circle(s, P['black'], (int(x) + 3, int(y)), 2)
-                pygame.draw.line(s, P['grey'], (int(x) - 3, int(y)), (int(x) + 3, int(y)))
+                pygame.draw.circle(s, P['black'], (int(x) - 4, int(y)), 2)
+                pygame.draw.circle(s, P['black'], (int(x) + 4, int(y)), 2)
+                pygame.draw.line(s, P['grey'], (int(x) - 4, int(y)), (int(x) + 4, int(y)))
             else:
-                pygame.draw.circle(s, P['black'], (int(x), int(y)), 3)
+                pygame.draw.circle(s, P['black'], (int(x), int(y)), r)
                 s.set_at((int(x) - 1, int(y) - 1), P['lgrey'])
+        # smoke, muzzle flashes, sparks
         if self.smoke:
             layer = pygame.Surface((W, H), pygame.SRCALPHA)
             for x, y, vx, vy, age, life in self.smoke:
                 k = age / life
-                rad = int(2 + 7 * k)
+                rad = int(2 + 8 * k)
                 a = int(150 * (1 - k))
-                pygame.draw.circle(layer, (200, 200, 205, a), (int(x), int(y)), rad)
+                pygame.draw.circle(layer, (205, 205, 210, a), (int(x), int(y)), rad)
                 pygame.draw.circle(layer, (150, 150, 160, a // 2), (int(x) + 1, int(y) + 1), max(1, rad - 2))
             s.blit(layer, (0, 0))
-        for x, y, age, sgn in self.muzzles:
+        for x, y, age, d in self.muzzles:
             k = age / 0.2
-            r = int(5 - 3 * k)
-            pygame.draw.circle(s, P['orange'], (int(x), int(y + sgn * 2)), r + 2)
-            pygame.draw.circle(s, P['yellow'], (int(x), int(y + sgn * 1)), r)
+            r = int(6 - 3 * k)
+            pygame.draw.circle(s, P['orange'], (int(x + d * 2), int(y)), r + 2)
+            pygame.draw.circle(s, P['yellow'], (int(x + d), int(y)), r)
             pygame.draw.circle(s, P['white'], (int(x), int(y)), max(1, r - 2))
-            for dx in (-1, 0, 1):
-                pygame.draw.line(s, P['yellow'], (x, y), (x + dx * 6, y + sgn * (9 - 4 * k)))
         for x, y, r, life in self.flashes:
             pygame.draw.circle(s, P['gold'], (int(x), int(y)), int(r), 1)
         for p in self.particles:
@@ -607,170 +647,219 @@ class CombatScene(Scene):
             render.draw_barks(s, en, ex, ey, ('player', 'enemy') if see else ('player',))
         for x, y, age in self.souls:
             k = age / 1.6
-            col = P['white'] if k < 0.6 else P['lgrey']
-            pygame.draw.ellipse(s, P['gold'], (int(x) - 3, int(y - 26 * k) - 3, 7, 3), 1)
-            s.set_at((int(x), int(y - 26 * k) + 1), col)
+            pygame.draw.ellipse(s, P['gold'], (int(x) - 4, int(y - 30 * k) - 4, 9, 3), 1)
+            s.set_at((int(x), int(y - 30 * k) + 1), P['white'])
         for txt, x, y, col, life in self.floaters:
-            gfx.text(s, txt, int(x), int(y), col, 16, shadow=P['black'], align='center')
-        self._enemy_panel(s, epan, see)
+            gfx.text(s, txt, int(x), int(y), col, shadow=P['black'], align='center')
+        # HUD
         self._top(s)
-        self._crew_list(s)
-        self._player_stats(s, px, py)
+        self._crew_chips(s)
+        self._player_status(s)
+        self._enemy_panel(s, see)
+        self._banners(s)
         self._bottom(s)
-        # aiming cursor
         m = pygame.mouse.get_pos()
-        if self.aiming is not None:
-            pygame.draw.circle(s, P['red'], m, 6, 1)
-            pygame.draw.line(s, P['red'], (m[0] - 9, m[1]), (m[0] + 9, m[1]))
-            pygame.draw.line(s, P['red'], (m[0], m[1] - 9), (m[0], m[1] + 9))
-        # banners
-        y = BANNER_Y
-        for txt, col, life in self.banner:
-            w = gfx.text_w(txt) + 12
-            bx = max(2, min(BANNER_X - w // 2, CREW_X - w - 4))
-            strip = pygame.Surface((w, 11), pygame.SRCALPHA)
-            strip.fill((8, 14, 28, 200))
-            s.blit(strip, (bx, y - 2))
-            gfx.text(s, txt, bx + 6, y, col)
-            y += 12
+        if self.aiming is not None and self.aiming < len(ship.weapons):
+            mx0, my0 = render.cannon_pos(ship, px, py, self.aiming)
+            n = int(math.hypot(m[0] - mx0, m[1] - my0) / 6)
+            for i in range(n):
+                if i % 2 == 0:
+                    k0, k1 = i / max(1, n), (i + 1) / max(1, n)
+                    pygame.draw.line(s, P['red'], (mx0 + (m[0] - mx0) * k0, my0 + (m[1] - my0) * k0),
+                                     (mx0 + (m[0] - mx0) * k1, my0 + (m[1] - my0) * k1))
+            pygame.draw.circle(s, P['red'], m, 7, 1)
+            pygame.draw.line(s, P['red'], (m[0] - 10, m[1]), (m[0] + 10, m[1]))
+            pygame.draw.line(s, P['red'], (m[0], m[1] - 10), (m[0], m[1] + 10))
+            gfx.text(s, "click an enemy room", m[0] + 10, m[1] + 8, P['white'], shadow=P['black'])
         if self.paused and not b.over:
-            gfx.text_outline(s, "PAUSED", 400, 196, P['yellow'], 24, align='center')
-            gfx.text(s, "space to resume", 400, 216, P['white'], shadow=P['black'], align='center')
+            gfx.text_outline(s, "PAUSED", W // 2, 232, P['yellow'], 24, align='center')
+            gfx.text(s, "press SPACE to resume", W // 2, 252, P['white'], shadow=P['black'], align='center')
         self._tooltips(s, m)
 
-    def can_see(self):
-        nest = self.gs.ship.sys.get('nest')
-        boarded = any(c.side == 'player' for c in self.enemy.crew)
-        return bool((nest and nest.eff() >= 1) or boarded)
+    # ------------------------------------------------------------------
+    def _attack_markers(self, s, t):
+        """Make it obvious what is being shot at, and what was just hit."""
+        ship, en = self.gs.ship, self.enemy
+        pulse = 0.5 + 0.5 * math.sin(t * 8)
+        # our targets on the enemy, with cannon numbers
+        if not self.sink:
+            badges = {}
+            for i, w in enumerate(ship.weapons):
+                if w.target is not None:
+                    badges.setdefault(w.target, []).append(i + 1)
+            for ri, nums in badges.items():
+                r = self.room_rect(en, ri)
+                col = (255, int(60 + 80 * pulse), 60)
+                pygame.draw.rect(s, col, r.inflate(2, 2), 2)
+                label = ' '.join(str(n) for n in nums)
+                w = gfx.text_w(label) + 6
+                pygame.draw.rect(s, P['red'], (r.right - w - 1, r.bottom - 11, w, 10))
+                gfx.text(s, label, r.right - w + 2, r.bottom - 10, P['white'])
+        # incoming: rooms the enemy's loaded cannons are aimed at
+        for w in en.weapons:
+            if w.target is not None and w.charge > 0.5 and not self.sink:
+                r = self.room_rect(ship, w.target)
+                if int(t * 6) % 2:
+                    pygame.draw.rect(s, P['red'], r, 1)
+                gfx.text(s, "!", r.centerx, r.top + 2, P['red'], 24, align='center')
+        # hit flashes
+        for (sid, ri), life in self.hit_flash.items():
+            sh = ship if sid == id(ship) else en
+            if sh is en and self.sink:
+                continue
+            r = self.room_rect(sh, ri)
+            fl = pygame.Surface(r.size, pygame.SRCALPHA)
+            fl.fill((255, 240, 200, int(170 * life / 0.45)))
+            s.blit(fl, r.topleft)
+
+    def _boarding_hint(self, s, t):
+        if not self.gs.ship.grapple:
+            return
+        m = pygame.mouse.get_pos()
+        if not self.board_btn.rect.collidepoint(m):
+            return
+        for sh in (self.gs.ship, self.enemy):
+            for ri in sh.top_rooms():
+                r = self.room_rect(sh, ri)
+                if int(t * 4) % 2:
+                    pygame.draw.rect(s, P['gold'], r, 2)
 
     def _sky(self, s, t):
-        for y in range(24, HORIZON):
-            k = (y - 24) / (HORIZON - 24)
+        for y in range(22, HORIZON):
+            k = (y - 22) / (HORIZON - 22)
             col = (int(110 + 80 * k), int(160 + 60 * k), int(205 + 30 * k))
             if self.fog:
                 col = tuple(int(c * 0.6 + 200 * 0.4) for c in col)
             pygame.draw.line(s, col, (0, y), (W, y))
         for i in range(4):
             cx = int((i * 173 + t * (3 + i)) % (W + 120)) - 60
-            cy = 34 + (i * 13) % 28
+            cy = 40 + (i * 17) % 40
             for dx, r in ((0, 7), (9, 10), (20, 7), (6, 5)):
                 pygame.draw.circle(s, (244, 246, 250), (cx + dx, cy), r)
         pygame.draw.line(s, (180, 210, 230), (0, HORIZON), (W, HORIZON))
 
     def _shields(self, s, ship, ox, oy):
         hb = render.hull_bounds(ship, ox, oy)
-        hb.top -= 14
-        hb.height += 14
+        hb.top -= 10
+        hb.height += 10
         for i in range(ship.shield_layers):
-            r = hb.inflate(26 + i * 8, 20 + i * 8)
+            r = hb.inflate(22 + i * 8, 14 + i * 8)
             pygame.draw.ellipse(s, P['lblue'] if i % 2 == 0 else P['teal'], r, 1)
         ml = ship.max_layers()
         if ship.shield_layers < ml and ship.shield_t > 0:
-            r = hb.inflate(26, 20)
+            r = hb.inflate(22, 14)
             pygame.draw.arc(s, P['lblue'], r, 0, math.tau * ship.shield_t / 2.0, 1)
 
     def _top(self, s):
-        gs = self.gs
-        pygame.draw.rect(s, P['navy'], (0, 0, W, 24))
-        pygame.draw.line(s, P['black'], (0, 24), (W, 24))
-        x = draw_resources(s, gs)
+        pygame.draw.rect(s, P['navy'], (0, 0, W, 22))
+        pygame.draw.line(s, P['black'], (0, 22), (W, 22))
+        x = draw_resources(s, self.gs, y=7)
         if self.fog:
-            gfx.text(s, "FOG", x + 6, 6, P['fog'], 16)
+            gfx.text(s, "FOG: evasion halved", x + 4, 7, P['fog'])
 
-    def _crew_list(self, s):
+    def _crew_chips(self, s):
+        m = pygame.mouse.get_pos()
         for i, c in enumerate(self.gs.crew):
             r = self.crew_list_rect(i)
             sel = c in self.selected
-            pygame.draw.rect(s, P['navy2'] if not sel else P['dgreen'], r)
-            pygame.draw.rect(s, P['black'], r, 1)
-            s.blit(gfx.crew_sprite(c.cls, c.skin), (r.left + 3, r.top + 3))
-            gfx.text(s, c.name[:16], r.left + 15, r.top + 3, P['white'], 14)
-            where = "ABOARD ENEMY" if c.ship is self.enemy else c.ship.rooms[c.room].title
-            gfx.text(s, TASK_LABEL.get(c.task, c.task) if c.task != 'idle' else where[:15], r.left + 15, r.top + 12,
-                     P['gold'] if c.ship is self.enemy else P['lgrey'], 14)
-            gfx.bar(s, r.left + 3, r.bottom - 4, 9, 2, c.hp / c.max_hp,
+            away = c.ship is self.enemy
+            pygame.draw.rect(s, P['dgreen'] if sel else P['navy2'], r)
+            pygame.draw.rect(s, P['gold'] if away else (P['green'] if sel else P['black']), r, 1)
+            from .. import people
+            s.blit(people.sprite(c.cls, c.skin, 'stand', 0, 1), (r.left + 7, r.top + 2))
+            gfx.bar(s, r.left + 3, r.bottom - 6, r.width - 6, 3, c.hp / c.max_hp,
                     P['green'] if c.hp > c.max_hp * 0.35 else P['red'])
+            if i < 9:
+                gfx.text(s, str(i + 1), r.left + 2, r.top + 2, P['lgrey'])
+            if r.collidepoint(m):
+                pygame.draw.rect(s, P['yellow'], r, 1)
 
-    def _player_stats(self, s, px, py):
+    def _player_status(self, s):
         ship = self.gs.ship
-        r = pygame.Rect(296, 176, 226, 52)
-        gfx.panel(s, r, 'dark')
-        gfx.text(s, ship.name, r.left + 6, r.top + 5, P['gold'])
+        x, y = 4, 66
         ev = ship.evasion(self.fog)
-        gfx.text(s, f"Evasion {ev}%", r.left + 6, r.top + 17, P['white'])
-        gfx.text(s, f"Bulwarks {ship.shield_layers}/{ship.max_layers()}", r.left + 84, r.top + 17, P['lblue'])
-        y = r.top + 29
+        parts = [(f"Evasion {ev}%", P['white']), (f"Bulwarks {ship.shield_layers}/{ship.max_layers()}", P['lblue'])]
         if not ship.manned('helm'):
-            gfx.text(s, "Helm unmanned! No evasion.", r.left + 6, y, P['orange'])
-            y += 11
-        flood = ship.flood_frac()
-        if flood > 0.05:
-            gfx.text(s, f"Flooding {int(flood * 100)}%: ship sluggish", r.left + 6, y, P['lblue'])
-            y += 11
+            parts.append(("Nobody at the helm!", P['orange']))
         fires = sum(1 for rm in ship.rooms if rm.fire > 0)
+        holes = sum(1 for rm in ship.rooms if rm.breach)
         if fires:
-            gfx.text(s, f"{fires} room{'s' if fires > 1 else ''} on fire!", r.left + 6, y, P['orange'])
+            parts.append((f"{fires} fire{'s' if fires > 1 else ''}", P['orange']))
+        if holes:
+            parts.append((f"{holes} hole{'s' if holes > 1 else ''} in the hull", P['lblue']))
+        for txt, col in parts:
+            w = gfx.text(s, txt, x, y, col, shadow=P['black'])
+            x += w + 10
 
-    def _enemy_panel(self, s, r, see):
+    def _banners(self, s):
+        y = BANNER_Y
+        for txt, col, life in self.banner:
+            w = gfx.text_w(txt) + 12
+            strip = pygame.Surface((w, 12), pygame.SRCALPHA)
+            strip.fill((8, 14, 28, 210))
+            s.blit(strip, (4, y - 2))
+            gfx.text(s, txt, 10, y, col)
+            y += 13
+
+    def _enemy_panel(self, s, see):
         en = self.enemy
         if self.sink:
             return
+        hb = render.hull_bounds(en, *self.eorig)
+        r = pygame.Rect(max(hb.left, 370), min(hb.bottom + 6, PANEL_Y - 48), 0, 44)
+        r.width = W - 4 - r.left
         gfx.panel(s, r, 'dark')
-        x = r.left + 6
-        gfx.text(s, en.name, x, r.top + 5, P['red'])
-        gfx.text(s, data.ENEMIES[self.enemy_key]['name'], x, r.top + 16, P['lgrey'])
-        per = 4 if en.hull_max <= 36 else 3
+        x = r.left + 5
+        gfx.text(s, en.name, x, r.top + 4, P['red'])
+        gfx.text(s, data.ENEMIES[self.enemy_key]['name'], r.right - 5, r.top + 4, P['lgrey'], align='right')
+        per = 4 if en.hull_max <= 40 else 3
         for i in range(en.hull_max):
             col = P['red'] if i < en.hull else P['dgrey']
-            pygame.draw.rect(s, col, (x + i * per, r.top + 28, per - 1, 7))
-        gfx.text(s, f"Evasion {en.evasion(self.fog)}%", x, r.top + 40, P['white'])
-        gfx.text(s, f"Bulwarks {en.shield_layers}/{en.max_layers()}", x + 78, r.top + 40, P['lblue'])
-        y = r.top + 52
+            pygame.draw.rect(s, col, (x + i * per, r.top + 15, per - 1, 6))
+        info = f"Evasion {en.evasion(self.fog)}%   Bulwarks {en.shield_layers}/{en.max_layers()}"
         if en.fleeing:
-            gfx.text(s, "FLEEING!", x, y, P['yellow'])
-            gfx.bar(s, x + 50, y + 1, 60, 5, en.escape, P['yellow'])
-            y += 11
+            info += "   FLEEING!"
         if self.battle.angry:
-            gfx.text(s, "ENRAGED: reloads faster", x, y, P['red'])
-            y += 11
+            info += "   ENRAGED"
+        gfx.text(s, info, x, r.top + 24, P['white'] if not en.fleeing else P['yellow'])
         if not see:
-            gfx.text(s, "Crow's Nest down: crew hidden", x, r.bottom - 12, P['lgrey'])
-        nest = self.gs.ship.sys.get('nest')
-        if nest and nest.eff() >= 2:
-            yy = r.bottom - 34
-            for i, w in enumerate(en.weapons):
-                cx = x + (i % 2) * 82
-                cy = yy + (i // 2) * 14
-                gfx.text(s, w.name.split(' ')[0], cx, cy, P['lgrey'])
-                gfx.bar(s, cx, cy + 9, 74, 2, w.charge, P['red'])
-        elif see:
-            gfx.text(s, "Crow's Nest Lv2 shows reloads", x, r.bottom - 12, P['grey'])
+            gfx.text(s, "Can't see inside: Crow's Nest needed", x, r.top + 34, P['lgrey'])
+        else:
+            nest = self.gs.ship.sys.get('nest')
+            if nest and nest.eff() >= 2:
+                xx = x
+                for w in en.weapons:
+                    nm = w.name.split(' ')[0]
+                    gfx.text(s, nm, xx, r.top + 34, P['lgrey'])
+                    gfx.bar(s, xx + gfx.text_w(nm) + 2, r.top + 36, 22, 3, w.charge, P['red'])
+                    xx += gfx.text_w(nm) + 30
+            else:
+                gfx.text(s, "Crow's Nest Lv2 shows their loading", x, r.top + 34, P['grey'])
 
     def _bottom(self, s):
         gs, ship = self.gs, self.gs.ship
         pygame.draw.rect(s, P['navy'], (0, PANEL_Y, W, H - PANEL_Y))
         pygame.draw.line(s, P['black'], (0, PANEL_Y), (W, PANEL_Y))
         m = pygame.mouse.get_pos()
-        # gusto
+        # hands
         free = ship.reactor_free()
-        gfx.text(s, "GUSTO", 6, PANEL_Y + 6, P['gold'])
-        gfx.text(s, "SYSTEMS", SYS_X0 + 4, PANEL_Y + 6, P["gold"])
-        for i in range(min(ship.gusto, 18)):
+        gfx.text(s, "HANDS", HANDS_X + 1, PANEL_Y + 3, P['gold'])
+        total = min(ship.gusto, 14)
+        for i in range(total):
             col = P['green'] if i < free else P['dgrey']
-            pygame.draw.rect(s, col, (8, H - 18 - i * 5, 16, 4))
-        s.blit(gfx.icon('bolt'), (13, H - 12))
-        # systems
+            pygame.draw.rect(s, col, (HANDS_X + 4, H - 6 - i * 4, 18, 3))
+        gfx.text(s, f"{free}/{ship.gusto}", HANDS_X + 26, PANEL_Y + 3, P['white'])
+        # stations
+        gfx.text(s, "STATIONS", SYS_X0 + 28, PANEL_Y + 3, P['gold'])
         for i, n in enumerate(self.sys_names()):
             r = self.sys_rect(i)
             sysm = ship.sys[n]
-            hover = r.collidepoint(m)
-            if hover:
+            if r.collidepoint(m):
                 pygame.draw.rect(s, P['navy2'], r)
             ic = gfx.icon(n, P['red'] if sysm.damage >= sysm.level else None)
-            s.blit(ic, (r.centerx - 4, H - 13))
+            s.blit(ic, (r.centerx - 4, H - 11))
             for j in range(sysm.level):
-                by = H - 20 - j * 5
-                rr = pygame.Rect(r.centerx - 6, by, 12, 4)
+                rr = pygame.Rect(r.centerx - 7, H - 17 - j * 5, 14, 4)
                 if j >= sysm.level - sysm.damage:
                     pygame.draw.rect(s, P['red'], rr)
                 elif sysm.sub:
@@ -779,65 +868,61 @@ class CombatScene(Scene):
                     pygame.draw.rect(s, P['green'], rr)
                 else:
                     pygame.draw.rect(s, P['dgrey'], rr, 1)
-            man = ship.manned(n)
-            if man:
-                s.set_at((r.centerx + 8, H - 9), P['yellow'])
-                s.set_at((r.centerx + 9, H - 9), P['yellow'])
-        # weapons
-        gfx.text(s, "CANNONS", WEAP_X0, PANEL_Y + 6, P['gold'])
-        gfx.text(s, "1-4 or click to select, then click an enemy room", WEAP_X0 + 48, PANEL_Y + 6, P['grey'])
+            if ship.manned(n):
+                pygame.draw.rect(s, P['yellow'], (r.right - 4, H - 10, 2, 2))
+        # cannons
+        gfx.text(s, "CANNONS", WEAP_X0, PANEL_Y + 3, P['gold'])
+        gfx.text(s, "1-4: select, then click an enemy room", WEAP_X0 + 44, PANEL_Y + 3, P['grey'])
         from .hangar import draw_tag
         for i, w in enumerate(ship.weapons):
             r = self.weapon_rect(i)
-            col = P['navy2']
-            if self.aiming == i:
-                col = P['dred']
-            elif r.collidepoint(m):
-                col = P['dgrey']
+            col = P['dred'] if self.aiming == i else (P['dgrey'] if r.collidepoint(m) else P['navy2'])
             pygame.draw.rect(s, col, r)
-            pygame.draw.rect(s, P['yellow'] if self.aiming == i else (P['green'] if w.powered else P['black']), r, 1)
-            gfx.text(s, f"{i + 1}", r.left + 4, r.top + 4, P['gold'])
-            name = w.name if gfx.text_w(w.name) <= r.width - 16 else w.name.split(' ')[0]
-            gfx.text(s, name, r.left + 12, r.top + 4, P['white'] if w.powered else P['lgrey'])
-            gfx.bar(s, r.left + 4, r.top + 15, r.width - 8, 4, w.charge,
-                    P['yellow'] if w.charge >= 1 else P['orange'])
+            edge = P['yellow'] if self.aiming == i else (P['green'] if w.powered else P['black'])
+            pygame.draw.rect(s, edge, r, 1)
+            gfx.text(s, f"{i + 1}", r.left + 3, r.top + 3, P['gold'])
+            nm = w.name if gfx.text_w(w.name) <= r.width - 14 else w.name.split(' ')[0]
+            gfx.text(s, nm, r.left + 10, r.top + 3, P['white'] if w.powered else P['lgrey'])
+            ready = w.charge >= 1
+            gfx.bar(s, r.left + 3, r.top + 13, r.width - 6, 4, w.charge, P['yellow'] if ready else P['orange'])
             for j in range(w.power):
-                pygame.draw.rect(s, P['green'] if w.powered else P['dgrey'], (r.left + 4 + j * 6, r.top + 23, 4, 6))
-            if w.d.get('ammo'):
-                s.blit(gfx.icon('ball'), (r.left + 6 + w.power * 6, r.top + 23))
-            tx = r.left + 4
-            for tag in data.weapon_tags(w.d)[:2]:
-                if tx + gfx.text_w(tag) + 4 > r.right - 2:
-                    break
-                tx += draw_tag(s, tag, tx, r.top + 34) + 2
-            if w.target is not None:
-                status, scol = "TARGET SET", P['red']
-            elif w.powered:
-                status, scol = "no target", P['lgrey']
+                pygame.draw.rect(s, P['green'] if w.powered else P['dgrey'], (r.left + 3 + j * 5, r.top + 20, 3, 5))
+            tx = r.left + 4 + w.power * 5 + 2
+            for tag in data.weapon_tags(w.d)[:1]:
+                draw_tag(s, tag, tx, r.top + 19)
+            if not w.powered:
+                status, scol = "no Hands: click", P['grey']
+            elif w.target is None:
+                status, scol = ("READY: aim it!" if ready else f"loading {int(w.charge * 100)}%"), P['lgrey']
             else:
-                status, scol = "click: power", P['grey']
-            gfx.text(s, status, r.left + 4, r.top + 46, scol)
-        # escape
+                tgt = self.enemy.rooms[w.target]
+                status = ("FIRING" if ready else f"loading {int(w.charge * 100)}%")
+                scol = P['red']
+                gfx.text(s, "at " + render.ROOM_LABEL.get(tgt.sys or tgt.kind, '?'), r.left + 3, r.top + 41, P['red'])
+            gfx.text(s, status, r.left + 3, r.top + 30, scol)
+        # escape and boarding
+        x = RIGHT_X
         e = ship.escape
+        gfx.text(s, "CHARTING COURSE", x + 2, PANEL_Y + 3, P['gold'])
+        if not ship.can_escape():
+            gfx.text(s, "needs someone at the helm", x + 2, PANEL_Y + 13, P['orange'])
+        elif e < 1:
+            gfx.text(s, f"hoisting sails... {int(e * 100)}%", x + 2, PANEL_Y + 13, P['lgrey'])
+        else:
+            gfx.text(s, "course set: ready to flee", x + 2, PANEL_Y + 13, P['green'])
+        gfx.bar(s, x + 2, PANEL_Y + 23, 160, 3, e, P['teal'])
         fb = self.flee_btn
         fb.enabled = e >= 1.0
-        gfx.text(s, "ESCAPE", 534, PANEL_Y + 6, P['gold'])
-        if not ship.can_escape():
-            gfx.text(s, "needs manned helm", 534, 268, P['orange'])
-        else:
-            gfx.text(s, "charging..." if e < 1 else "ready!", 534, 268, P['lgrey'])
-        gfx.bar(s, 534, 282, 100, 5, e, P['teal'], border=P['black'])
         fb.draw(s, m)
         if ship.grapple:
             cd = self.battle.board_cd
-            gfx.text(s, "GRAPPLING HOOKS" if cd <= 0 else f"HOOKS: {cd:.0f}s", 534, 314, P['gold'])
             self.board_btn.enabled = cd <= 0
+            self.board_btn.label = "Board [B]" if cd <= 0 else f"Board {cd:.0f}s"
             self.board_btn.draw(s, m)
             self.recall_btn.draw(s, m)
         else:
-            gfx.text(s, "SPACE pause", 534, 318, P['grey'])
-            gfx.text(s, "R-click: move crew", 534, 329, P['grey'])
-            gfx.text(s, "Hooks sold in port", 534, 340, P['dgrey'])
+            gfx.text(s, "Boarding needs an Armory", x + 2, 338, P['grey'])
+        gfx.text(s, "SPACE pause   R-click: move", x + 2, 351, P['grey'])
 
     def _tooltips(self, s, m):
         ship = self.gs.ship
@@ -845,36 +930,47 @@ class CombatScene(Scene):
             if self.sys_rect(i).collidepoint(m):
                 d = data.SYSTEMS[n]
                 sysm = ship.sys[n]
-                extra = " (no power needed)" if sysm.sub else " L-click +power, R-click -power."
+                extra = " (needs no Hands)" if sysm.sub else " L-click: +1 Hand, R-click: -1 Hand."
                 if n == 'guns':
-                    extra = " Click cannons to power them."
-                tooltip(s, f"{d['title']} Lv{sysm.level}: {d['desc']}{extra}", m, 220)
+                    extra = " Click a cannon card to give it Hands."
+                tooltip(s, f"{d['title']} Lv{sysm.level}: {d['desc']}{extra}", m, 230)
                 return
         for i, w in enumerate(ship.weapons):
             if self.weapon_rect(i).collidepoint(m):
                 d = w.d
-                stats = (f"{d['shots']} shot(s), {d['dmg'] + d.get('hull', 0)} hull dmg, {d['charge']:.1f}s reload, "
-                         f"{d['power']} power. [{' '.join(data.weapon_tags(d))}] Right-click to unpower.")
-                tooltip(s, f"{d['name']}: {d['desc']} {stats}", m, 220)
+                stats = (f"{d['shots']} shot(s), {d['dmg'] + d.get('hull', 0)} hull damage, loads in "
+                         f"{d['charge']:.1f}s, needs {d['power']} Hands. [{' '.join(data.weapon_tags(d))}] "
+                         f"Right-click to take its Hands away.")
+                tooltip(s, f"{d['name']}: {d['desc']} {stats}", m, 230)
                 return
         for i, c in enumerate(self.gs.crew):
             if self.crew_list_rect(i).collidepoint(m):
-                tooltip(s, f"{c.name} the {c.title} ({int(c.hp)}/{c.max_hp}). {c.d['desc']}", m, 220)
+                where = "aboard the ENEMY" if c.ship is self.enemy else c.ship.rooms[c.room].title
+                tooltip(s, f"{c.name} the {c.title} ({int(c.hp)}/{c.max_hp} HP), {data.HANDS.get(c.cls, 3)} Hands. "
+                           f"{TASK_LABEL.get(c.task, c.task)} in {where}. {c.d['desc']}", m, 230)
                 return
-        if m[1] < PANEL_Y and m[0] < CREW_X:
-            for sh in (self.gs.ship, self.enemy):
+        if self.board_btn.rect.collidepoint(m) and ship.grapple:
+            tooltip(s, "Boarding: select crew standing on your top deck (HELM or SAILS), then press Board. "
+                       "They swing onto the enemy's top deck and must fight their way down. Recall brings home "
+                       "crew standing on the enemy's top deck.", m, 230)
+            return
+        if self.hover_crew is not None:
+            c = self.hover_crew
+            tooltip(s, f"{c.name} the {c.title}: {TASK_LABEL.get(c.task, c.task)}. {int(c.hp)}/{c.max_hp} HP",
+                    m, 200)
+            return
+        if m[1] < PANEL_Y:
+            for sh in (ship, self.enemy):
                 ri = render.room_at(sh, *self.origin_of(sh), m)
                 if ri is not None and not (self.sink and sh is self.enemy):
                     r = sh.rooms[ri]
                     if sh is self.enemy and not self.can_see() and not r.sys:
                         return
-                    desc = data.SYSTEMS[r.sys]['desc'] if r.sys else data.FLAVOR_DESC.get(r.kind, '')
+                    desc = data.SYSTEMS[r.sys]['desc'] if r.sys else data.MODULES.get(r.kind, {}).get('desc', '')
                     extra = []
                     if r.fire > 0:
-                        extra.append("ON FIRE")
+                        extra.append("ON FIRE.")
                     if r.breach:
-                        extra.append("LEAKING")
-                    if r.water > 5:
-                        extra.append(f"{int(r.water)}% flooded")
-                    tooltip(s, f"{r.title}. {desc} {' '.join(extra)}", (m[0], m[1] + 10), 200)
+                        extra.append("HOLE IN THE HULL: costs 1 hull every 12s until patched.")
+                    tooltip(s, f"{r.title}. {desc} {' '.join(extra)}", (m[0], m[1] + 10), 220)
                     return

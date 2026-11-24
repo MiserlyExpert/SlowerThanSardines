@@ -23,6 +23,8 @@ class Battle:
         self.bark_t = 4.0
         self.board_t = self.rng.uniform(18, 30)
         self.boards_left = 2 if boss else (1 if self.rng.random() < data.ENEMIES[enemy.kind]['grapple'] else 0)
+        if enemy.module_level('armory') == 0:
+            self.boards_left = 0
         if boss:
             self.boards_left = 3
         for w in self.player.weapons:
@@ -30,13 +32,18 @@ class Battle:
             w.target = None
         self.player.escape = 0.0
         self.board_cd = 0.0
-        for c in self.player.crew:
-            c.axes = getattr(gs, 'axes', False)
+        self.fallen = []
+        for ship in (self.player, self.enemy):
+            arm = ship.module_level('armory')
+            for c in ship.crew:
+                c.melee = 1.0 + 0.25 * arm
         self.player.shield_layers = self.player.max_layers()
 
     # ------------------------------------------------------------------
     def emit(self, kind, **kw):
         kw['kind'] = kind
+        if kind == 'death' and kw['crew'].side == 'player':
+            self.fallen.append(kw['crew'])
         self.events.append(kw)
 
     def other(self, ship):
@@ -79,9 +86,11 @@ class Battle:
         if ship is self.enemy and self.angry:
             mult *= 1.35
         guns = ship.sys.get('guns')
+        mag = 1.0 + 0.2 * ship.module_level('magazine')
         for w in ship.weapons:
             if w.powered and guns and guns.intact > 0:
-                w.charge = min(1.0, w.charge + dt * mult / w.d['charge'])
+                m_ = mult * (mag if w.d.get('pierce') else 1.0)
+                w.charge = min(1.0, w.charge + dt * m_ / w.d['charge'])
             else:
                 w.charge = max(0.0, w.charge - dt * 0.4)
             if w.charge >= 1.0 and w.target is not None and target_ship.hull > 0:
@@ -114,6 +123,7 @@ class Battle:
             base = 20.0 if ship is self.player else 26.0
             if self.fog:
                 base *= 2
+            base /= 1.0 + 0.2 * ship.module_level('chartroom')
             ship.escape = min(1.0, ship.escape + dt * (1 + 0.08 * sails) / base)
         if ship is self.enemy and ship.escape >= 1.0:
             self.over = 'enemy_fled'
@@ -132,7 +142,7 @@ class Battle:
             self.player.crew.remove(c)
             c.path, c.foe = [], None
             self.enemy.place(c, self.rng.choice(tops), self.rng)
-        self.board_cd = 20.0
+        self.board_cd = max(8.0, 20.0 - 4 * (self.player.module_level('armory') - 1))
         self.emit('pboard', ship=self.enemy, room=ready[0].room, n=len(ready))
         return len(ready)
 
@@ -318,6 +328,15 @@ class Battle:
                 c.hp = max(1, c.hp - (25 if self.over in ('win', 'enemy_fled') else 0))
                 ship.place(c, None, self.rng)
         ship.crew = [c for c in ship.crew if c.side == 'player' and c.alive]
+        # the Crypt: some of the fallen come back, slightly see-through
+        crypt = ship.module_level('crypt')
+        self.risen = []
+        for c in self.fallen:
+            if crypt and self.rng.random() < 0.3 * crypt and len(ship.crew) < 8:
+                from .model import Crew
+                g = Crew('ghost', name=c.name, side='player', rng=self.rng)
+                ship.place(g, None, self.rng)
+                self.risen.append(g)
         for r in ship.rooms:
             r.fire = r.water = 0.0
             r.breach = False

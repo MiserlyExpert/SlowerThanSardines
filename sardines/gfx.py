@@ -293,6 +293,11 @@ ICON_ROWS = {
              ".........", "........."],
     'skull': [".wwwww.", "wwwwwww", "wkwwwkw", "wkwwwkw", "wwwkwww", ".wwwww.", ".w.w.w."],
     'crown': ["y..y..y", "yy.y.yy", "yyyyyyy", "yryyyuy", "yyyyyyy"],
+    'fish': ["......", ".wwww.", "wwkwwg", ".wwww.", "......", "......"],
+    'spice': [".rr...", "rrrr..", ".nnnn.", "nyyyyn", ".nnnn.", "......"],
+    'silk': ["uuuuu.", "ulluu.", "uuuuu.", ".uuuuu", ".uullu", ".uuuuu"],
+    'tea': ["..G...", ".GGG..", "nnnnnn", "nyyyyn", "nnnnnn", ".nnnn."],
+    'hand': [".s.s.s", ".s.s.s", "ssssss", "ssssss", ".ssss.", ".ssss."],
     'anchor': ["...k...", "..k.k..", "...k...", ".kkkkk.", "...k...", "k..k..k", ".kkkkk."],
     'rum': [".dddd.", "dyyyyd", "dddddd", "dddddd", "dyyyyd", ".dddd."],
     'coin': [".yyyy.", "yyddyy", "ydyyyy", "ydyyyy", "yyddyy", ".yyyy."],
@@ -300,7 +305,7 @@ ICON_ROWS = {
     'heart': [".rr.rr.", "rrrrrrr", "rrrrrrr", ".rrrrr.", "..rrr..", "...r..."],
     'bolt': ["...yy", "..yy.", ".yyyy", "..yy.", ".yy..", "yy..."],
 }
-ICON_COLS = dict(g='#a9a6b3', n='#4f2e1b', y='#e8b33a', w='#f4f1e8', k='#2b2836', r='#d9453b', u='#3a7bd5', d='#a8743f')
+ICON_COLS = dict(G='#5fbf4f', l='#8fd3ff', s='#f2c09a', g='#a9a6b3', n='#4f2e1b', y='#e8b33a', w='#f4f1e8', k='#2b2836', r='#d9453b', u='#3a7bd5', d='#a8743f')
 _icon_cache = {}
 
 
@@ -424,15 +429,16 @@ def draw_boat(surf, x, y, f, t, scale=1, flag='rebel'):
 
 
 def portrait(surf, cls, skin, x, y, scale=3, bg=None, frame=None, t=0.0):
-    """A framed, scaled-up crew portrait. Returns its rect."""
-    w, h = 8 * scale + 8, 10 * scale + 8
+    """A framed crew portrait using the side-profile sprites. Returns its rect."""
+    from . import people
+    ps = max(1, scale // 2 + scale % 2)
+    img = people.portrait(cls, skin, ps)
+    w, h = people.W * ps + 6, people.H * ps + 4
     r = pygame.Rect(x, y, w, h)
     pygame.draw.rect(surf, bg or P['navy2'], r)
-    pygame.draw.rect(surf, P['sea'], (x + 1, y + h - 8, w - 2, 7))
-    spr = crew_sprite(cls, skin, 0)
-    img = pygame.transform.scale(spr, (8 * scale, 10 * scale))
+    pygame.draw.rect(surf, P['sea'], (x + 1, y + h - 6, w - 2, 5))
     bob = int(math.sin(t * 2 + skin) * 1) if t else 0
-    surf.blit(img, (x + 4, y + 4 + bob))
+    surf.blit(img, (x + 3, y + 1 + bob))
     pygame.draw.rect(surf, frame or P['gold'], r, 1)
     pygame.draw.rect(surf, P['black'], r.inflate(2, 2), 1)
     return r

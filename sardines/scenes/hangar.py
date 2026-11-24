@@ -11,6 +11,9 @@ from ..gfx import P
 from .hud import tooltip
 
 
+SLOT = 84
+
+
 class HangarScene(Scene):
     def __init__(self, app):
         super().__init__(app)
@@ -56,15 +59,15 @@ class HangarScene(Scene):
         ]
         x0 = self.crew_x0()
         for i in range(len(self.crew)):
-            x = x0 + i * 74
-            self.buttons.append(gfx.Button((x, 290, 18, 16), "<", lambda i=i: self.cycle(i, -1),
+            x = x0 + i * SLOT
+            self.buttons.append(gfx.Button((x, 266, 16, 16), "<", lambda i=i: self.cycle(i, -1),
                                            enabled=self.unlocked, size=14))
-            self.buttons.append(gfx.Button((x + 46, 290, 18, 16), ">", lambda i=i: self.cycle(i, 1),
+            self.buttons.append(gfx.Button((x + 64, 266, 16, 16), ">", lambda i=i: self.cycle(i, 1),
                                            enabled=self.unlocked, size=14))
 
     def crew_x0(self):
         n = len(self.crew)
-        return W // 2 - (n * 74 - 10) // 2
+        return W // 2 - (n * SLOT - 4) // 2
 
     def cycle(self, i, step):
         opts = self.allowed()
@@ -110,16 +113,14 @@ class HangarScene(Scene):
         gfx.text(s, "THE SHIPYARD", 10, 7, P['gold'], 24)
         n_un = sum(1 for k in data.SHIP_ORDER if profile.is_unlocked(k))
         gfx.text(s, f"Ships unlocked: {n_un}/{len(data.SHIP_ORDER)}", W - 10, 10, P['lgrey'], align='right')
-        # ship name plate
-        gfx.text(s, d['name'].upper(), W // 2 + 2, 38, P['black'], 24, align='center')
-        gfx.text(s, d['name'].upper(), W // 2, 36, P['white'] if self.unlocked else P['grey'], 24, align='center')
+
         dots = len(data.SHIP_ORDER)
         for i in range(dots):
             col = P['gold'] if i == self.idx else (P['lgrey'] if profile.is_unlocked(data.SHIP_ORDER[i]) else P['dgrey'])
             pygame.draw.rect(s, col, (W // 2 - dots * 6 + i * 12, 56, 8, 3))
         # the ship
         ox = W // 2 - (ship.gw * T) // 2 - 16
-        oy = 152 - render.WATERLINE + int(math.sin(t * 1.3) * 1.5)
+        oy = 138 - render.WATERLINE + int(math.sin(t * 1.3) * 1.5)
         render.draw_ship(s, ship, ox, oy, t, crew_sides=('player',) if self.unlocked else ())
         if not self.unlocked:
             sh = pygame.Surface((W, 150), pygame.SRCALPHA)
@@ -128,34 +129,40 @@ class HangarScene(Scene):
             gfx.text(s, "LOCKED", W // 2 + 2, 98, P['black'], 40, align='center')
             gfx.text(s, "LOCKED", W // 2, 96, P['red'], 40, align='center')
             gfx.text(s, "To unlock: " + d['unlock'][2], W // 2, 128, P['white'], align='center')
+        # ship name plate, over the masts
+        gfx.text_outline(s, d['name'].upper(), W // 2, 34, P['white'] if self.unlocked else P['grey'], 24,
+                         align='center')
         # info panel
         gfx.panel(s, (14, 202, W - 28, 116), 'parch')
         gfx.paragraph(s, d['blurb'], 26, 210, 300, P['ink'])
         y = 210
-        stats = [("Hull", str(d['hull'])), ("Gusto", str(d['gusto'])), ("Rum", str(d['rum'])),
-                 ("Cannonballs", str(d['balls']))]
-        for i, (k, v) in enumerate(stats):
-            gfx.text(s, k, 350 + (i % 2) * 130, y + (i // 2) * 11, P['wood2'])
-            gfx.text(s, v, 430 + (i % 2) * 130, y + (i // 2) * 11, P['ink'], align='right')
-        y = 236
-        for wk in d['weapons']:
+        stats = [("Hull", d['hull']), ("Hands", self.preview.gusto), ("Rum", d['rum']), ("Balls", d['balls'])]
+        x = 350
+        for k, v in stats:
+            x += gfx.text(s, k, x, y, P['wood2']) + 3
+            x += gfx.text(s, str(v), x, y, P['ink']) + 10
+        y = 221
+        for wk in d['weapons'][:3]:
             wd = data.WEAPONS[wk]
             gfx.text(s, wd['name'], 350, y, P['ink'])
-            x = 470
-            for tag in data.weapon_tags(wd):
+            x = 450
+            for tag in data.weapon_tags(wd)[:3]:
                 x += draw_tag(s, tag, x, y) + 3
-            y += 11
-        gfx.text(s, "STARTING CREW  (use the arrows to choose)", 26, 250, P['dred'])
+            y += 9
+        gfx.text(s, "STARTING CREW: use the arrows to choose", 26, 236, P['dred'])
         x0 = self.crew_x0()
         m = pygame.mouse.get_pos()
+        tip = None
         for i, cls in enumerate(self.crew):
-            x = x0 + i * 74
-            r = gfx.portrait(s, cls, self.skins[i], x + 20, 260, 2, t=t)
-            gfx.text(s, data.CREW[cls]['title'], x + 32, 308, P['ink'], align='center')
+            x = x0 + i * SLOT
+            r = gfx.portrait(s, cls, self.skins[i], x + 21, 248, 3, t=t)
+            gfx.text(s, data.CREW[cls]['title'], x + 40, 302, P['ink'], align='center')
             if r.collidepoint(m):
-                tooltip(s, data.CREW[cls]['desc'], m, 200)
+                tip = f"{data.CREW[cls]['title']}, {data.HANDS.get(cls, 3)} Hands. {data.CREW[cls]['desc']}"
         for b in self.buttons:
             b.draw(s, m)
+        if tip:
+            tooltip(s, tip, m, 200)
 
 
 def draw_tag(s, tag, x, y):

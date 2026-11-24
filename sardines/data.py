@@ -43,6 +43,10 @@ CREW = {
                     desc="Admiral Lord Percival Crumpet-Smythe. Has never lost a battle, or a teacup."),
 }
 
+# Hands each crew member brings to the ship's work (what other games call 'power').
+HANDS = dict(captain=3, drunk=2, deckhand=3, monkey=2, carpenter=3, surgeon=2, cook=3,
+             pirate=3, brute=4, ghost=3, marine=3, admiral=4, merchant=2)
+
 HIREABLE = ['deckhand', 'deckhand', 'monkey', 'carpenter', 'surgeon', 'cook', 'drunk', 'drunk', 'captain']
 
 NAMES = {
@@ -91,9 +95,9 @@ SYSTEMS = {
     'sails': dict(title='Sails', max=8, cost=15, short='SAIL',
                   desc="Each bar adds 5% evasion and speeds your escape."),
     'guns': dict(title='Gun Deck', max=8, cost=20, short='GUNS',
-                 desc="Bars power your cannons. Man it to reload faster. Drunks reload fastest."),
+                 desc="Gun crews: each cannon needs Hands to load it. Man it to load faster. Drunks load fastest."),
     'bulwark': dict(title='Bulwarks', max=8, cost=25, short='BULW',
-                    desc="Every 2 bars raise one oak plate that blocks one cannon shot."),
+                    desc="Every 2 Hands brace one oak plate that blocks one cannon shot."),
     'sickbay': dict(title='Sick Bay', max=3, cost=20, short='SICK',
                     desc="Heals crew inside. Smells of vinegar and regret."),
     'helm': dict(title='Helm', max=3, cost=25, short='HELM', sub=True,
@@ -177,88 +181,109 @@ TAG_COLORS = dict(MULTI='#3a7bd5', FAST='#5fbf4f', FIRE='#f08a2c', HULL='#d9453b
 # ('ladder' | 'rigging', column, upper_row) or ('stairs', column, upper_row) which runs from column (top)
 # to column + 1 (bottom). Masts are tile columns.
 # ---------------------------------------------------------------------------
-FLAVOR = {
-    'deck': "Forecastle", 'quarters': "Captain's Quarters", 'galley': "Galley", 'mess': "Mess Hall",
-    'hold': "Cargo Hold", 'magazine': "Powder Magazine", 'brig': "The Brig", 'bar': "The Bar",
-    'cellar': "Beer Cellar", 'crypt': "The Crypt", 'lookout': "Lookout",
+# Modules: rooms with a mechanic, installed into EMPTY slots (or upgraded) in port.
+MODULES = {
+    'galley': dict(title='Galley', max=3, cost=40,
+                   desc="Hot food. +1 Hand per level, and the crew heals 10 HP per level after every leg. "
+                        "A Cook doubles the healing."),
+    'hold': dict(title='Cargo Hold', max=3, cost=30,
+                 desc="Room for trade goods: +6 cargo per level. Buy cheap in one port, sell dear in another."),
+    'magazine': dict(title='Powder Magazine', max=3, cost=45,
+                     desc="Lobbed cannons (mortar, firebomb) load 20% faster per level, and you salvage "
+                          "+1 cannonball per level after each win. Explodes if it burns too long."),
+    'armory': dict(title='Armory', max=3, cost=60,
+                   desc="Grappling hooks and cutlasses: lets your crew BOARD enemy ships. Each level: +25% "
+                        "melee damage and a shorter boarding cooldown."),
+    'brig': dict(title='The Brig', max=2, cost=35,
+                 desc="Take prisoners: after a win, a 40% chance per level to capture one. Ransom them for "
+                      "doubloons or offer them a job."),
+    'chartroom': dict(title='Chart Room', max=3, cost=40,
+                      desc="Charting an escape course is 20% faster per level, and the Royal Armada gains "
+                           "10% less ground per level each leg."),
+    'bar': dict(title='The Bar', max=3, cost=40, desc="Brews 1 Rum per level after every leg."),
+    'crypt': dict(title='The Crypt', max=2, cost=50,
+                  desc="Crew who die in battle have a 30% chance per level to come back as a Ghost."),
 }
-FLAVOR_DESC = {
-    'magazine': "Full of gunpowder. If it catches fire for long, it explodes. Try not to let that happen.",
-    'quarters': "Somewhere to keep the good biscuits.",
-    'galley': "Where the stew happens.",
-    'mess': "Long tables, short tempers.",
-    'hold': "Crates, barrels, and something that squeaks.",
-    'brig': "For prisoners, mutineers, and anyone who sings sea shanties before noon.",
-    'bar': "The heart of the Floating Tavern.",
-    'cellar': "Twenty-five barrels and counting. (Counting is getting harder.)",
-    'crypt': "Coffins. Some of them are occupied. Some of them are 'occupied'.",
-    'deck': "Open deck. Watch out for grapeshot.",
+# Trade goods: buy where they're cheap, sell where they're dear. Needs a Cargo Hold to carry much.
+GOODS = {
+    'fish': dict(title='Salted Fish', price=8, icon='fish',
+                 desc="Technically illegal under the Sardine Tax. Everyone buys it anyway."),
+    'spice': dict(title='Spice', price=16, icon='spice', desc="Makes the Admiral's tea interesting."),
+    'silk': dict(title='Silk', price=26, icon='silk', desc="Smuggled, smooth, and suspiciously Royal-blue."),
+    'tea': dict(title='Contraband Tea', price=34, icon='tea',
+                desc="Untaxed tea. The single most dangerous substance known to the Crown."),
 }
-SYS_FALLBACK = dict(nest='lookout', sickbay='mess', bulwark='hold', guns='hold', sails='deck', helm='deck')
+BASE_CARGO = 2
+CARGO_PER_HOLD = 6
+
+EMPTY_DESC = "An empty compartment. Buy a module for it at a port's shipyard."
 
 LAYOUTS = {
     'courier': dict(
-        rooms=[('nest', 6, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 6), ('deck', 9, 1, 3),
-               ('quarters', 0, 2, 3), ('guns', 3, 2, 5), ('galley', 8, 2, 3),
+        rooms=[('nest', 6, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 6), ('empty', 9, 1, 3),
+               ('empty', 0, 2, 3), ('guns', 3, 2, 5), ('galley', 8, 2, 3),
                ('sickbay', 1, 3, 3), ('bulwark', 4, 3, 3), ('hold', 7, 3, 3)],
         links=[('rigging', 6, 0), ('ladder', 1, 1), ('stairs', 4, 1), ('ladder', 10, 1),
                ('ladder', 2, 2), ('ladder', 6, 2), ('stairs', 8, 2)],
         masts=[6, 10, 1]),
     'raider': dict(
-        rooms=[('nest', 5, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 6), ('deck', 9, 1, 3),
-               ('brig', 0, 2, 2), ('guns', 2, 2, 6), ('mess', 8, 2, 3),
+        rooms=[('nest', 5, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 6), ('empty', 9, 1, 3),
+               ('brig', 0, 2, 2), ('guns', 2, 2, 6), ('armory', 8, 2, 3),
                ('bulwark', 1, 3, 4), ('hold', 5, 3, 5)],
         links=[('rigging', 5, 0), ('ladder', 1, 1), ('stairs', 3, 1), ('ladder', 10, 1),
                ('ladder', 3, 2), ('ladder', 8, 2)],
         masts=[5, 9]),
     'tavern': dict(
-        rooms=[('helm', 0, 1, 3), ('sails', 3, 1, 4), ('deck', 7, 1, 5),
+        rooms=[('helm', 0, 1, 3), ('sails', 3, 1, 4), ('empty', 7, 1, 5),
                ('sickbay', 0, 2, 3), ('bar', 3, 2, 6), ('guns', 9, 2, 3),
-               ('bulwark', 1, 3, 4), ('cellar', 5, 3, 5)],
+               ('bulwark', 1, 3, 4), ('galley', 5, 3, 5)],
         links=[('ladder', 1, 1), ('stairs', 4, 1), ('ladder', 10, 1), ('ladder', 2, 2), ('ladder', 7, 2)],
         masts=[5]),
     'runner': dict(
-        rooms=[('nest', 4, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 4), ('deck', 7, 1, 2),
+        rooms=[('nest', 4, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 4), ('chartroom', 7, 1, 2),
                ('guns', 1, 2, 4), ('bulwark', 5, 2, 3),
                ('sickbay', 2, 3, 3), ('hold', 5, 3, 2)],
         links=[('rigging', 4, 0), ('ladder', 1, 1), ('ladder', 7, 1), ('ladder', 3, 2), ('ladder', 6, 2)],
         masts=[4, 7]),
     'ghostly': dict(
-        rooms=[('nest', 4, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 5), ('deck', 8, 1, 3),
-               ('quarters', 0, 2, 3), ('guns', 3, 2, 5), ('brig', 8, 2, 2),
-               ('bulwark', 1, 3, 4), ('crypt', 5, 3, 4)],
+        rooms=[('nest', 4, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 5), ('empty', 8, 1, 3),
+               ('crypt', 0, 2, 3), ('guns', 3, 2, 5), ('brig', 8, 2, 2),
+               ('bulwark', 1, 3, 4), ('empty', 5, 3, 4)],
         links=[('rigging', 4, 0), ('ladder', 1, 1), ('stairs', 3, 1), ('ladder', 9, 1),
                ('ladder', 2, 2), ('ladder', 6, 2)],
         masts=[4, 9]),
     'small': dict(
-        rooms=[('helm', 0, 1, 3), ('sails', 3, 1, 4), ('deck', 7, 1, 2),
-               ('guns', 1, 2, 4), ('bulwark', 5, 2, 3), ('hold', 2, 3, 4)],
+        rooms=[('helm', 0, 1, 3), ('sails', 3, 1, 4), ('empty', 7, 1, 2),
+               ('guns', 1, 2, 4), ('bulwark', 5, 2, 3), ('empty', 2, 3, 4)],
         links=[('ladder', 1, 1), ('ladder', 7, 1), ('ladder', 3, 2)],
         masts=[4, 7]),
     'medium': dict(
-        rooms=[('nest', 5, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 5), ('deck', 8, 1, 3),
-               ('quarters', 0, 2, 3), ('guns', 3, 2, 5), ('mess', 8, 2, 2),
-               ('sickbay', 1, 3, 3), ('bulwark', 4, 3, 3), ('hold', 7, 3, 3)],
+        rooms=[('nest', 5, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 5), ('empty', 8, 1, 3),
+               ('empty', 0, 2, 3), ('guns', 3, 2, 5), ('empty', 8, 2, 2),
+               ('sickbay', 1, 3, 3), ('bulwark', 4, 3, 3), ('empty', 7, 3, 3)],
         links=[('rigging', 5, 0), ('ladder', 1, 1), ('stairs', 4, 1), ('ladder', 9, 1),
                ('ladder', 2, 2), ('ladder', 6, 2), ('ladder', 8, 2)],
         masts=[5, 9, 1]),
     'large': dict(
-        rooms=[('nest', 6, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 6), ('deck', 9, 1, 3),
-               ('quarters', 0, 2, 3), ('guns', 3, 2, 6), ('galley', 9, 2, 3),
-               ('sickbay', 1, 3, 3), ('magazine', 4, 3, 2), ('bulwark', 6, 3, 3), ('hold', 9, 3, 2)],
+        rooms=[('nest', 6, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 6), ('empty', 9, 1, 3),
+               ('empty', 0, 2, 3), ('guns', 3, 2, 6), ('empty', 9, 2, 3),
+               ('sickbay', 1, 3, 3), ('empty', 4, 3, 2), ('bulwark', 6, 3, 3), ('empty', 9, 3, 2)],
         links=[('rigging', 6, 0), ('ladder', 1, 1), ('stairs', 4, 1), ('ladder', 10, 1), ('ladder', 2, 2),
                ('ladder', 5, 2), ('ladder', 7, 2), ('ladder', 10, 2)],
         masts=[6, 10, 1]),
     'huge': dict(
-        rooms=[('nest', 7, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 7), ('deck', 10, 1, 4),
-               ('quarters', 0, 2, 4), ('guns', 4, 2, 6), ('mess', 10, 2, 3),
-               ('sickbay', 1, 3, 3), ('magazine', 4, 3, 3), ('bulwark', 7, 3, 3), ('galley', 10, 3, 2),
+        rooms=[('nest', 7, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 7), ('empty', 10, 1, 4),
+               ('galley', 0, 2, 4), ('guns', 4, 2, 6), ('armory', 10, 2, 3),
+               ('sickbay', 1, 3, 3), ('magazine', 4, 3, 3), ('bulwark', 7, 3, 3), ('empty', 10, 3, 2),
                ('hold', 3, 4, 7)],
         links=[('rigging', 7, 0), ('ladder', 1, 1), ('stairs', 4, 1), ('ladder', 11, 1), ('ladder', 2, 2),
                ('ladder', 5, 2), ('ladder', 8, 2), ('ladder', 11, 2), ('ladder', 5, 3), ('ladder', 8, 3)],
         masts=[7, 11, 1]),
 }
-LAYOUTS['frigate'] = LAYOUTS['large']
+LAYOUTS['frigate'] = dict(LAYOUTS['large'], rooms=[
+    ('nest', 6, 0, 1), ('helm', 0, 1, 3), ('sails', 3, 1, 6), ('empty', 9, 1, 3),
+    ('chartroom', 0, 2, 3), ('guns', 3, 2, 6), ('galley', 9, 2, 3),
+    ('sickbay', 1, 3, 3), ('magazine', 4, 3, 2), ('bulwark', 6, 3, 3), ('empty', 9, 3, 2)])
 
 # ---------------------------------------------------------------------------
 # Enemies
@@ -346,6 +371,7 @@ SHIPS = {
     'turncoat': dict(name='HMS Turncoat', faction='crown', layout='frigate', hull=34, gusto=10,
                      sys=dict(sails=2, guns=3, bulwark=4, sickbay=1, helm=2, nest=2),
                      weapons=['long_nine', 'long_nine', 'chain_shot'], crew=['captain', 'marine', 'marine'],
+                     hands_bonus=1,
                      rum=8, balls=6, doubloons=20, extra_crew=['marine'],
                      blurb="A Royal frigate whose crew mutinied over the biscuit ration. Thick bulwarks, "
                            "terrible tea.",
@@ -359,7 +385,8 @@ SHIPS = {
                    unlock=('max_drunks', 3, "Have 3 Drunkards in your crew at once.")),
     'runner': dict(name='The Rum Runner', faction='smuggler', layout='runner', hull=24, gusto=10,
                    sys=dict(sails=5, guns=3, bulwark=2, sickbay=1, helm=1, nest=1),
-                   weapons=['twin_nines', 'quick_nine'], crew=['captain', 'monkey'],
+                   weapons=['twin_nines', 'quick_nine'], crew=['captain', 'monkey', 'deckhand'],
+                   hands_bonus=2,
                    rum=18, balls=3, doubloons=45, extra_crew=[],
                    blurb="Small, fast and very good at not being caught. Thin hull, absurd evasion.",
                    unlock=('wins', 20, "Win 20 battles (across all voyages).")),

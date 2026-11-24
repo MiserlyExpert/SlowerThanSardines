@@ -27,7 +27,7 @@ class GameState:
         self.stats = dict(jumps=0, wins=0, doubloons=0, sea=1)
         self.cause = None
         self.enemy = None
-        self.axes = False
+        self.goods = {k: 0 for k in data.GOODS}
         self.seen = set()
         self.pending = {}
 
@@ -126,8 +126,16 @@ class GameState:
                 key = self.rng.choice(data.LOOT_WEAPONS)
             out.append((self.add_weapon(key), 'good'))
         if 'gusto' in o:
-            self.ship.gusto += o['gusto']
-            out.append((f"+{o['gusto']} Gusto", 'good'))
+            self.ship.hands_bonus += o['gusto']
+            out.append((f"+{o['gusto']} Hands (morale!)", 'good'))
+        if 'goods' in o:
+            key = o['goods']
+            n = min(self.rng.randint(1, 3), self.cargo_cap() - self.cargo_used())
+            if n > 0:
+                self.goods[key] += n
+                out.append((f"+{n} {data.GOODS[key]['title']}", 'good'))
+            else:
+                out.append((f"No cargo space for {data.GOODS[key]['title']}", 'bad'))
         if 'upgrade' in o:
             s = self.ship.sys.get(o['upgrade'])
             if s and s.level < data.SYSTEMS[s.name]['max']:
@@ -162,6 +170,12 @@ class GameState:
             return self.pending.pop(key)
         return model.make_enemy(key, self.sector_idx, self.rng)
 
+    def cargo_cap(self):
+        return data.BASE_CARGO + data.CARGO_PER_HOLD * self.ship.module_level('hold')
+
+    def cargo_used(self):
+        return sum(self.goods.values())
+
     def loot(self, enemy_key, how):
         rng = self.rng
         base = 12 + 7 * self.sector_idx
@@ -181,7 +195,17 @@ class GameState:
             o['weapon'] = 'random'
         if how == 'win_crew' and rng.random() < 0.25:
             o['add_crew'] = 'random'
+        mag = self.ship.module_level('magazine')
+        if mag:
+            o['balls'] = o.get('balls', 0) + mag
+        if self.enemy_had_hold and rng.random() < 0.7:
+            o['goods'] = rng.choice(list(data.GOODS))
         return o
+
+    enemy_had_hold = False
+
+    def prisoner_chance(self):
+        return 0.4 * self.ship.module_level('brig')
 
     # ------------------------------------------------------------------
     def can_jump(self, idx):
@@ -200,13 +224,19 @@ class GameState:
                 c.hp = max(1, c.hp - (25 if c.cls == 'drunk' else 12))
             notes.append(("Sailing sober! The crew suffers withdrawal.", 'bad'))
         days = 2 if (src.fog or dst.fog) else 1
-        sec.fleet_x += FLEET_STEP * days
+        chart = self.ship.module_level('chartroom')
+        sec.fleet_x += FLEET_STEP * days * (1.0 - 0.1 * chart)
         if days == 2:
             notes.append(("The fog slows you down: 2 days pass.", 'bad'))
-        cook = self.first('cook')
-        if cook:
+        galley = self.ship.module_level('galley')
+        heal = 10 * galley * (2 if self.has('cook') else 1) + (10 if self.has('cook') else 0)
+        if heal:
             for c in self.crew:
-                c.hp = min(c.max_hp, c.hp + 20)
+                c.hp = min(c.max_hp, c.hp + heal)
+        bar = self.ship.module_level('bar')
+        if bar:
+            self.rum += bar
+            notes.append((f"The Bar brews {bar} Rum.", 'good'))
         sec.cur = idx
         first_visit = not dst.visited
         dst.visited = True
@@ -221,7 +251,10 @@ class GameState:
         if sec.overrun(nd) and not nd.cleared:
             return events.armada_event()
         if nd.kind == 'port':
-            return events.port_event(rng)
+            if nd.store is None:
+                from .scenes.harbor import gen_port
+                nd.store = gen_port(self)
+            return dict(id='port', text='', choices=[])
         if not first_visit or nd.cleared:
             return dict(id='quiet', text=rng.choice(events.QUIET), choices=[dict(text="Continue.", out={})])
         if nd.kind == 'distress':

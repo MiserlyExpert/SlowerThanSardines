@@ -8,7 +8,7 @@ import random
 
 import pygame
 
-from . import data, gfx
+from . import data, gfx, people
 from .config import RH, TOP_ROW, TW
 from .gfx import P
 
@@ -26,6 +26,22 @@ FACTION = {
     'ghost': dict(a=(60, 76, 72), b=(72, 92, 86), stripe=(127, 201, 163), copper=(40, 60, 56),
                   rail=(110, 138, 128), flag='ghost'),
 }
+ROOM_TINT = {
+    'helm': (232, 179, 58), 'sails': (120, 190, 240), 'guns': (217, 69, 59), 'bulwark': (240, 138, 44),
+    'sickbay': (95, 191, 79), 'nest': (170, 120, 220), 'quarters': (150, 90, 200), 'galley': (240, 150, 60),
+    'mess': (220, 180, 90), 'hold': (180, 150, 100), 'magazine': (160, 30, 30), 'brig': (120, 120, 140),
+    'bar': (230, 170, 50), 'cellar': (150, 100, 60), 'crypt': (100, 170, 150), 'lookout': (170, 120, 220),
+    'deck': (200, 200, 200),
+}
+ROOM_TINT.update({'armory': (200, 60, 60), 'chartroom': (80, 170, 220), 'empty': (40, 40, 50)})
+ROOM_LABEL = {
+    'helm': 'HELM', 'sails': 'SAILS', 'guns': 'GUN DECK', 'bulwark': 'BULWARKS', 'sickbay': 'SICK BAY',
+    'nest': 'NEST', 'quarters': 'QUARTERS', 'galley': 'GALLEY', 'mess': 'MESS', 'hold': 'HOLD',
+    'magazine': 'POWDER', 'brig': 'BRIG', 'bar': 'BAR', 'cellar': 'CELLAR', 'crypt': 'CRYPT',
+    'lookout': 'LOOKOUT', 'deck': 'FORECASTLE', 'armory': 'ARMORY', 'chartroom': 'CHART ROOM',
+    'empty': 'EMPTY',
+}
+
 WALL = (140, 96, 58)
 WALL2 = (124, 84, 50)
 BEAM = (56, 34, 20)
@@ -158,27 +174,50 @@ def draw_rigging(surf, ship, ox, oy, t):
         tops.append((mx, top))
         # stays: lines to bow and stern
         pygame.draw.line(surf, (60, 44, 30), (mx, top + 2), tip if k <= 1 else (ox + L1 - 6, deck - 10))
-        # sails between yards
-        yards = [top + 6, top + 6 + (deck - top - 20) // 2, deck - 17]
-        half = int(TW * (1.15 if main else 0.9))
-        for i in range(2):
-            y0, y1 = yards[i], yards[i + 1]
-            wobble = math.sin(t * 2.0 + k + i) * 1.5
+        # square sails seen side-on: each one bellies forward, towards the bow, filled by the wind astern
+        aft_most = k == min(range(len(ship.masts)), key=lambda j: ship.masts[j])
+        if aft_most and len(ship.masts) > 1:
+            # a fore-and-aft spanker on the aftmost mast, seen flat from the side
+            gy, by_ = top + 8, deck - 13
+            span = int(TW * 1.6)
+            sway = math.sin(t * 1.8 + k) * 1.2
             if unfurled:
-                belly = 3 + wobble
-                poly = [(mx - half, y0), (mx + half, y0), (mx + half + 1, y1 - 1),
-                        (mx, y1 + belly), (mx - half - 1, y1 - 1)]
+                poly = [(mx - 1, gy), (mx - span, gy + 5), (mx - span - 3 + sway, by_), (mx - 1, by_)]
                 pygame.draw.polygon(surf, SAIL, poly)
-                pygame.draw.polygon(surf, SAIL2, [(mx + 2, y0), (mx + half, y0), (mx + half + 1, y1 - 1),
-                                                  (mx + 2, y1 + belly - 1)])
-                for sx in range(mx - half + 5, mx + half - 2, 6):
-                    pygame.draw.line(surf, SAIL2, (sx, y0 + 1), (sx, y1 - 1))
+                pygame.draw.polygon(surf, SAIL2, [(mx - 1, gy + 2), (mx - 6, gy + 3), (mx - 7, by_), (mx - 1, by_)])
+                for yy in range(gy + 6, by_, 5):
+                    pygame.draw.line(surf, SAIL2, (mx - 2, yy), (mx - span + 1 + (yy - gy) // 8, yy))
                 pygame.draw.polygon(surf, (150, 140, 118), poly, 1)
-            else:
-                pygame.draw.line(surf, SAIL, (mx - half, y0 + 2), (mx + half, y0 + 2), 3)
-                for sx in range(mx - half, mx + half, 5):
-                    surf.set_at((sx, y0 + 4), SAIL2)
-            pygame.draw.line(surf, P['wood0'], (mx - half - 2, y0), (mx + half + 2, y0), 2)
+            pygame.draw.line(surf, P['wood0'], (mx, gy), (mx - span, gy + 5), 2)          # gaff
+            pygame.draw.line(surf, P['wood0'], (mx, by_), (mx - span - 3, by_), 2)       # boom
+        else:
+            yards = [top + 5, top + 5 + (deck - top - 18) // 2, deck - 15]
+            depth = (19 if main else 15)
+            for i in range(2):
+                y0, y1 = yards[i], yards[i + 1]
+                wob = 1 + 0.12 * math.sin(t * 2.2 + k * 1.3 + i)
+                if unfurled:
+                    d = depth * wob * (0.85 if i == 0 else 1.0)
+                    curve = []
+                    n = 10
+                    for j in range(n + 1):
+                        u = j / n
+                        curve.append((mx + d * math.sin(math.pi * (0.15 + 0.7 * u)) ** 1.2, y0 + (y1 - y0) * u))
+                    poly = [(mx - 2, y0)] + curve + [(mx - 2, y1)]
+                    pygame.draw.polygon(surf, SAIL, poly)
+                    inner = [(mx - 1, y0 + 1)] + [(mx + (x - mx) * 0.45, y) for x, y in curve] + [(mx - 1, y1 - 1)]
+                    pygame.draw.polygon(surf, SAIL2, inner)
+                    for j in range(1, 4):                     # reef bands
+                        yy = y0 + (y1 - y0) * j / 4
+                        xx = mx + d * math.sin(math.pi * (0.15 + 0.7 * j / 4)) ** 1.2
+                        pygame.draw.line(surf, SAIL2, (mx, yy), (xx - 1, yy))
+                    pygame.draw.lines(surf, (150, 140, 118), False, curve, 1)
+                else:
+                    pygame.draw.rect(surf, SAIL, (mx - 2, y0 + 1, 6, 3))
+                    pygame.draw.rect(surf, SAIL2, (mx - 2, y0 + 3, 6, 1))
+                # yards are seen end-on: short stubs either side of the mast
+                pygame.draw.line(surf, P['wood0'], (mx - 3, y0), (mx + 4, y0), 2)
+            pygame.draw.line(surf, P['wood0'], (mx - 3, yards[2]), (mx + 4, yards[2]), 2)
         pygame.draw.line(surf, P['wood0'], (mx, top), (mx, deck), 3)
         pygame.draw.line(surf, P['wood3'], (mx - 1, top), (mx - 1, deck), 1)
         # shrouds to the rails
@@ -232,6 +271,14 @@ def gfx_flag(surf, x, y, kind, t):
 # ---------------------------------------------------------------------------
 # Room interiors
 # ---------------------------------------------------------------------------
+def _tint(surf, rect, key, alpha):
+    col = ROOM_TINT.get(key)
+    if col:
+        t = pygame.Surface(rect.size, pygame.SRCALPHA)
+        t.fill((*col, alpha))
+        surf.blit(t, rect.topleft)
+
+
 def _wall(surf, rect, lit):
     pygame.draw.rect(surf, WALL, rect)
     for x in range(rect.left + 3, rect.right, 7):
@@ -359,6 +406,31 @@ def draw_room_props(surf, ship, r, ox, oy, t):
             if x > x0 + w - 8:
                 break
             x += _floor_prop(surf, kind, x, fy, rnd) + 2
+    elif k == 'armory':
+        for i in range(min(4, w // 12)):                      # cutlasses on the wall, crossed
+            cx = x0 + 8 + i * 12
+            pygame.draw.line(surf, (200, 200, 210), (cx - 3, y0 + 13), (cx + 3, y0 + 21))
+            pygame.draw.line(surf, (200, 200, 210), (cx + 3, y0 + 13), (cx - 3, y0 + 21))
+            surf.set_at((cx - 3, y0 + 21), P['gold'])
+            surf.set_at((cx + 3, y0 + 21), P['gold'])
+        hx = x0 + w - 10                                    # grappling hook and coiled line
+        pygame.draw.line(surf, (90, 90, 100), (hx, y0 + 12), (hx, y0 + 20), 2)
+        pygame.draw.arc(surf, (90, 90, 100), (hx - 4, y0 + 17, 8, 7), math.pi, 2 * math.pi, 1)
+        pygame.draw.circle(surf, (190, 160, 100), (hx, fy - 3), 3, 1)
+    elif k == 'chartroom':
+        tx = x0 + w // 2
+        pygame.draw.rect(surf, P['wood2'], (tx - 12, fy - 9, 24, 2))
+        pygame.draw.rect(surf, P['parch'], (tx - 10, fy - 11, 20, 2))
+        pygame.draw.line(surf, P['dred'], (tx - 6, fy - 11), (tx + 4, fy - 11))
+        pygame.draw.line(surf, P['wood1'], (tx - 11, fy - 7), (tx - 11, fy))
+        pygame.draw.line(surf, P['wood1'], (tx + 10, fy - 7), (tx + 10, fy))
+        pygame.draw.circle(surf, P['gold'], (x0 + 7, y0 + 16), 4, 1)             # compass rose
+        surf.set_at((x0 + 7, y0 + 13), P['red'])
+    elif k == 'empty':
+        for i in range(3):                                   # cobwebs and dust
+            surf.set_at((x0 + 2 + i, y0 + 3 + i), (190, 190, 200))
+            surf.set_at((x0 + 2 + i * 2, y0 + 3), (190, 190, 200))
+        pygame.draw.line(surf, (90, 70, 50), (x0 + w // 2 - 6, fy - 1), (x0 + w // 2 + 6, fy - 1))
     elif k == 'brig':
         for i in range(x0 + 3, x0 + w - 2, 3):
             pygame.draw.line(surf, (90, 90, 100), (i, y0 + 3), (i, fy - 1))
@@ -399,17 +471,18 @@ def _floor_prop(surf, kind, x, fy, rnd):
 
 
 def _ladder(surf, x, ytop, ybot, rope=False):
-    col = (120, 92, 52) if rope else P['wood2']
+    col = (120, 92, 52) if rope else P['wood3']
+    a, b = x + 5, x + TW - 6
     if rope:
         for i in range(0, int(ybot - ytop), 4):
-            pygame.draw.line(surf, col, (x + 2, ybot - i), (x + 13, ybot - i))
-        pygame.draw.line(surf, col, (x + 2, ybot), (x + 6, ytop))
-        pygame.draw.line(surf, col, (x + 13, ybot), (x + 9, ytop))
+            pygame.draw.line(surf, col, (a - 1, ybot - i), (b + 1, ybot - i))
+        pygame.draw.line(surf, col, (a - 1, ybot), (a + 3, ytop))
+        pygame.draw.line(surf, col, (b + 1, ybot), (b - 3, ytop))
         return
-    pygame.draw.line(surf, P['wood0'], (x + 3, ytop - 5), (x + 3, ybot))
-    pygame.draw.line(surf, P['wood0'], (x + 12, ytop - 5), (x + 12, ybot))
-    for y in range(int(ytop) - 3, int(ybot), 4):
-        pygame.draw.line(surf, col, (x + 4, y), (x + 11, y))
+    pygame.draw.line(surf, P['wood0'], (a, ytop - 6), (a, ybot), 2)
+    pygame.draw.line(surf, P['wood0'], (b, ytop - 6), (b, ybot), 2)
+    for y in range(int(ytop) - 4, int(ybot), 5):
+        pygame.draw.line(surf, col, (a + 2, y), (b - 1, y))
 
 
 def draw_structure(surf, ship, ox, oy, t, interior=True):
@@ -421,7 +494,10 @@ def draw_structure(surf, ship, ox, oy, t, interior=True):
     for r in ship.rooms:
         rect = pygame.Rect(ox + r.gx * TW, oy + r.gy * RH, r.w * TW, RH)
         if not r.open_air and interior:
-            _wall(surf, rect, lit=(r.idx % 2 == 0))
+            _wall(surf, rect, lit=(r.idx % 2 == 0) and r.kind != 'empty')
+            _tint(surf, rect, r.sys or r.kind, 46 if r.kind != 'empty' else 110)
+        elif r.open_air:
+            _tint(surf, pygame.Rect(rect.left, rect.bottom - 8, rect.width, 6), r.sys or r.kind, 70)
         if interior or r.open_air:
             draw_room_props(surf, ship, r, ox, oy, t)
     # ladders, stairs and rigging
@@ -480,8 +556,8 @@ def draw_structure(surf, ship, ox, oy, t, interior=True):
                 neighbour = any(o.gy == r.gy and (o.gx == x or o.gx + o.w == x) and o is not r
                                 for o in ship.rooms)
                 if neighbour:   # doorway: bulkhead only above the door
-                    pygame.draw.rect(surf, BEAM, (xx - 1, y0, 3, RH - 15))
-                    pygame.draw.line(surf, P['wood3'], (xx - 2, y0 + RH - 15), (xx + 2, y0 + RH - 15))
+                    pygame.draw.rect(surf, BEAM, (xx - 1, y0, 3, RH - 25))
+                    pygame.draw.line(surf, P['wood3'], (xx - 3, y0 + RH - 25), (xx + 3, y0 + RH - 25))
                 else:
                     pygame.draw.rect(surf, BEAM, (xx - 1, y0, 3, RH))
     # top deck rail and crow's nest platform
@@ -511,21 +587,12 @@ def draw_hazards(surf, ship, ox, oy, t, interior=True):
             by = rect.top + 8
             pygame.draw.polygon(surf, (10, 25, 50), [(bx - 4, by - 2), (bx, by - 5), (bx + 4, by - 1),
                                                      (bx + 3, by + 4), (bx - 2, by + 5), (bx - 5, by + 2)])
-            if r.gy >= wl_row - 1:
+            if True:
                 for i in range(7):      # the sea spraying in
                     k = ((t * 3 + i / 7) % 1)
                     px = bx + (i - 3) * 1.5 * k * 3
                     py = by + k * k * (r.floor_y + oy - by)
                     surf.set_at((int(px), int(py)), P['lblue'] if i % 2 else P['foam'])
-        if r.water > 1 and not r.open_air:
-            hh = int((RH - 3) * r.water / 100)
-            if hh > 0:
-                ws = pygame.Surface((rect.width - 2, hh), pygame.SRCALPHA)
-                ws.fill((40, 110, 200, 140))
-                for x in range(0, rect.width - 2, 4):
-                    yy = int(1 + math.sin(t * 4 + x * 0.5 + r.idx))
-                    pygame.draw.line(ws, (170, 220, 250, 210), (x, yy), (x + 2, yy))
-                surf.blit(ws, (rect.left + 1, oy + r.floor_y - hh + 1))
         if r.fire > 0:
             fr = random.Random(int(t * 12) + r.idx * 97)
             n = int(3 + r.fire / 8)
@@ -566,6 +633,24 @@ def draw_exterior(surf, ship, ox, oy, t):
                 surf.set_at((int(px), py), P['yellow'] if lit else (40, 40, 48))
 
 
+def draw_room_labels(surf, ship, ox, oy):
+    for r in ship.rooms:
+        key = r.sys or r.kind
+        label = ROOM_LABEL.get(key, key.upper())
+        rect = pygame.Rect(ox + r.gx * TW, oy + r.gy * RH, r.w * TW, RH)
+        lvl = getattr(r, 'level', 1) if not r.sys else ship.sys[r.sys].level
+        if gfx.text_w(label) + 6 > rect.width - (12 if r.sys else 0):
+            continue
+        col = ROOM_TINT.get(key, (220, 220, 220)) if key != 'empty' else (130, 130, 140)
+        w = gfx.text_w(label) + 4
+        bg = pygame.Surface((w, 9), pygame.SRCALPHA)
+        bg.fill((12, 10, 16, 150))
+        surf.blit(bg, (rect.left + 2, rect.top + 2))
+        gfx.text(surf, label, rect.left + 4, rect.top + 3, tuple(min(255, v + 40) for v in col))
+        for i in range(min(lvl, 8) if lvl > 1 else 0):
+            surf.set_at((rect.left + 4 + i * 2, rect.top + 12), P['gold'])
+
+
 def draw_room_overlay(surf, ship, ox, oy, interior, hover=None, targets=()):
     for r in ship.rooms:
         rect = pygame.Rect(ox + r.gx * TW, oy + r.gy * RH, r.w * TW, RH)
@@ -580,7 +665,7 @@ def draw_room_overlay(surf, ship, ox, oy, interior, hover=None, targets=()):
             s = ship.sys[r.sys]
             tint = P['red'] if s.damage >= s.level else (P['orange'] if s.damage > 0 else None)
             ic = gfx.icon(r.sys, tint)
-            surf.blit(ic, (rect.right - 11, rect.top + 3))
+            surf.blit(ic, (rect.right - 11, rect.top + 2))
         if hover == r.idx:
             pygame.draw.rect(surf, P['yellow'], rect, 1)
         if r.idx in targets:
@@ -591,114 +676,93 @@ def draw_room_overlay(surf, ship, ox, oy, interior, hover=None, targets=()):
             pygame.draw.line(surf, P['red'], (c[0], c[1] - 6), (c[0], c[1] + 6))
 
 
-def draw_sea_front(surf, ship, ox, oy, t, alpha=38):
-    """Translucent sea in front of the hull below the waterline, with a lapping foam line."""
+def draw_sea_front(surf, ship, ox, oy, t, alpha=255):
+    """The sea laps at the very bottom of the hull, so the ship floats without hiding any deck."""
     b = hull_bounds(ship, ox, oy)
-    wl = oy + WATERLINE
-    h = b.bottom - wl + 6
+    low = max(r.floor_y for r in ship.rooms) + oy + 5
+    h = b.bottom - low + 6
     if h <= 0:
         return
-    sea = pygame.Surface((b.width + 40, h), pygame.SRCALPHA)
-    sea.fill((14, 42, 79, alpha))
-    surf.blit(sea, (b.left - 20, wl))
-    for x in range(b.left - 20, b.right + 20, 3):
-        yy = wl + int(math.sin(t * 3 + x * 0.15) * 1.3)
-        surf.set_at((x, yy), P['foam'])
-        if (x // 3 + int(t * 4)) % 5 == 0:
-            surf.set_at((x + 1, yy - 1), P['foam'])
+    pygame.draw.rect(surf, P['deep'], (b.left - 6, low + 2, b.width + 12, h))
+    for x in range(b.left - 6, b.right + 6, 2):
+        yy = low + int(math.sin(t * 2.6 + x * 0.12) * 1.6)
+        pygame.draw.line(surf, P['sea2'], (x, yy + 1), (x, low + 3))
+        if (x // 2 + int(t * 5)) % 7 == 0:
+            surf.set_at((x, yy), P['foam'])
 
 
 # ---------------------------------------------------------------------------
 # Crew
 # ---------------------------------------------------------------------------
-def draw_crew(surf, ship, ox, oy, t, selected=(), visible_sides=('player', 'enemy')):
+def draw_crew(surf, ship, ox, oy, t, selected=(), visible_sides=('player', 'enemy'), hover_crew=None):
     for c in sorted(ship.crew, key=lambda c: (c.y, c.uid)):
         if not c.alive or c.side not in visible_sides:
             continue
-        draw_one(surf, c, ox + c.x, oy + c.y, t, c in selected)
+        draw_one(surf, c, ox + c.x, oy + c.y, t, c in selected, c is hover_crew)
 
 
-def draw_one(surf, c, fx_, fy_, t, selected=False):
-    x, y = int(fx_), int(fy_)
+def crew_pose(c):
     mode = getattr(c, 'mode', 'stand')
-    facing = getattr(c, 'facing', 1)
     act = getattr(c, 'act_t', 0.0)
-    bob = 0
-    if mode == 'climb':
-        frame = int(c.walk_t * 6) % 2
-        spr = gfx.crew_sprite(c.cls, c.skin, frame, False, 'climb')
-    elif c.moving:
-        frame = int(c.walk_t * 8) % 2
-        bob = -1 if int(c.walk_t * 8) % 2 else 0
-        spr = gfx.crew_sprite(c.cls, c.skin, frame, facing < 0)
-    else:
-        frame = 0
-        if c.task == 'fight':
-            facing = 1 if (c.foe and c.foe.x > c.x) else -1
-        spr = gfx.crew_sprite(c.cls, c.skin, frame, facing < 0)
-        if int(c.anim * 1.2 + c.uid) % 3 == 0 and c.task in ('idle', 'man'):
-            bob = -1 if int(c.anim * 2) % 2 else 0            # breathing
-    lunge = 0
-    if c.task == 'fight' and not c.moving:
-        lunge = facing if int(act * 6 + c.uid) % 2 else 0
-    wob = 0
-    if c.cls == 'drunk' and mode != 'climb':
-        wob = int(round(math.sin(c.anim * 2.3) * 1.2))
-    sx, sy = x - 4 + wob + lunge, y - 10 + bob
-    if selected:
-        col = P['green']
-        for dx, dy in ((-2, -2), (9, -2), (-2, 11), (9, 11)):
-            surf.set_at((sx + dx, sy + dy), col)
-            surf.set_at((sx + dx + (1 if dx < 0 else -1), sy + dy), col)
-            surf.set_at((sx + dx, sy + dy + (1 if dy < 0 else -1)), col)
-    surf.blit(spr, (sx, sy))
-    if not c.moving:
-        _action(surf, c, sx, sy, facing, act, t)
-    if c.hp < c.max_hp:
-        col = P['green'] if c.side == 'player' else P['red']
-        gfx.bar(surf, sx - 1, sy - 4, 10, 2, max(0.0, c.hp / c.max_hp), col)
-
-
-def _action(surf, c, sx, sy, f, act, t):
-    hx = sx + (7 if f > 0 else 0)          # hand position
-    hy = sy + 5
+    if mode == 'climb' and c.moving:
+        return 'climb', int(c.walk_t * 6) % 2
+    if c.moving:
+        return 'walk', int(c.walk_t * 9) % 4
+    k = int(act * 4 + c.uid) % 2
     task = c.task
-    if task in ('repair', 'patch'):
-        up = int(act * 5 + c.uid) % 2 == 0
-        tip = (hx + 2 * f, hy - 4) if up else (hx + 3 * f, hy + 1)
-        pygame.draw.line(surf, P['wood1'], (hx, hy), tip)
-        pygame.draw.rect(surf, (120, 120, 130), (tip[0] - 1, tip[1] - 1, 2, 2))
-        if not up and int(act * 10) % 2:
-            surf.set_at((tip[0] + f * 2, tip[1] + 1), P['yellow'])
-            surf.set_at((tip[0] + f, tip[1] + 2), P['white'])
-    elif task == 'fire':
+    if task in ('repair', 'patch', 'sabotage'):
+        return 'repair', k
+    if task == 'fight':
+        return 'fight', int(act * 5 + c.uid) % 2
+    if task == 'fire':
+        return 'bucket', k
+    if task == 'man' and c.ship is not None:
+        sysn = c.ship.rooms[c.room].sys
+        if sysn == 'sails':
+            return 'haul', int(act * 2 + c.uid) % 2
+        if sysn == 'nest':
+            return 'spyglass', 0
+        if sysn == 'guns':
+            return 'gun', int(act * 1.5 + c.uid) % 2
+    return 'stand', 0
+
+
+def draw_one(surf, c, fx_, fy_, t, selected=False, hover=False):
+    x, y = int(fx_), int(fy_)
+    pose, frame = crew_pose(c)
+    facing = getattr(c, 'facing', 1)
+    if c.task == 'fight' and c.foe is not None and not c.moving:
+        facing = 1 if c.foe.x > c.x else -1
+    if pose == 'stand' and c.task == 'man' and c.ship is not None and c.ship.rooms[c.room].sys == 'helm':
+        facing = 1
+    spr = people.sprite(c.cls, c.skin, pose, frame, facing)
+    wob = 0
+    if c.cls == 'drunk' and pose in ('stand', 'walk'):
+        wob = int(round(math.sin(c.anim * 2.1) * 1.3))
+    bob = -1 if (pose == 'stand' and int(c.anim * 1.1 + c.uid) % 4 == 0) else 0
+    sx, sy = x - people.W // 2 + wob, y - people.FEET_Y - 1 + bob
+    if selected or hover:
+        col = P['green'] if selected else P['yellow']
+        mask = pygame.mask.from_surface(spr)
+        for px_, py_ in mask.outline():
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                surf.set_at((sx + px_ + dx, sy + py_ + dy), col)
+    surf.blit(spr, (sx, sy))
+    # little effects
+    act = getattr(c, 'act_t', 0.0)
+    hx = x + 7 * facing
+    if pose == 'repair' and frame == 1 and int(act * 10) % 2:
+        surf.set_at((hx + 2 * facing, y - 8), P['yellow'])
+        surf.set_at((hx + 3 * facing, y - 9), P['white'])
+    if pose == 'bucket':
         k = (act * 2.5 + c.uid * 0.3) % 1
-        pygame.draw.rect(surf, P['wood2'], (hx - 1, hy - 1, 3, 3))
-        for i in range(4):
-            px = hx + f * (2 + k * 10 + i)
-            py = hy - 2 + k * k * 8 + i
-            surf.set_at((int(px), int(py)), P['lblue'])
-    elif task == 'fight':
-        swing = int(act * 6 + c.uid) % 2
-        tip = (hx + 6 * f, hy - 3) if swing else (hx + 5 * f, hy + 3)
-        pygame.draw.line(surf, (220, 220, 230), (hx, hy), tip)
-        if swing and int(act * 12) % 3 == 0:
-            surf.set_at((tip[0] + f, tip[1]), P['yellow'])
-    elif task == 'man' and c.ship is not None:
-        room = c.ship.rooms[c.room]
-        if room.sys == 'sails':      # hauling on a line
-            k = int(act * 3 + c.uid) % 2
-            pygame.draw.line(surf, (190, 160, 100), (hx, hy - 3 + k * 2), (hx + f, sy - 12))
-            surf.set_at((hx, hy - 3 + k * 2), c_skin(c))
-        elif room.sys == 'nest':     # spyglass
-            pygame.draw.line(surf, P['gold'], (hx, sy + 3), (hx + 4 * f, sy + 2))
-        elif room.sys == 'bulwark':
-            k = int(act * 2 + c.uid) % 2
-            pygame.draw.line(surf, P['wood3'], (hx, hy - k), (hx + 4 * f, hy - k))
-    elif task == 'sabotage':
-        if int(act * 6) % 2:
-            surf.set_at((hx + 2 * f, hy), P['yellow'])
-            surf.set_at((hx + 3 * f, hy - 1), P['orange'])
+        for i in range(5):
+            surf.set_at((int(hx + facing * (k * 12 + i)), int(y - 12 + k * k * 10 + i)), P['lblue'])
+    if pose == 'fight' and int(act * 12) % 4 == 0:
+        surf.set_at((hx + 5 * facing, y - 12), P['yellow'])
+    if c.hp < c.max_hp or selected:
+        col = P['green'] if c.side == 'player' else P['red']
+        gfx.bar(surf, x - 6, sy - 3, 12, 2, max(0.0, c.hp / c.max_hp), col)
 
 
 def c_skin(c):
@@ -711,7 +775,7 @@ def draw_barks(surf, ship, ox, oy, visible_sides=('player', 'enemy')):
             img = gfx.render(c.bark, 14, P['ink'])
             w = img.get_width() + 6
             x = int(ox + c.x - w // 2)
-            y = int(oy + c.y - 24)
+            y = int(oy + c.y - 32)
             x = max(2, min(x, 638 - w))
             r = pygame.Rect(x, y, w, img.get_height() + 3)
             pygame.draw.rect(surf, P['white'], r)
@@ -725,7 +789,7 @@ def draw_barks(surf, ship, ox, oy, visible_sides=('player', 'enemy')):
 # Whole ship
 # ---------------------------------------------------------------------------
 def draw_ship(surf, ship, ox, oy, t, interior=True, selected=(), hover=None, targets=(),
-              crew_sides=('player', 'enemy'), sea=True, overlay=True):
+              crew_sides=('player', 'enemy'), sea=True, overlay=True, hover_crew=None):
     draw_rigging(surf, ship, ox, oy, t)
     hs = _hull_surface(ship)
     surf.blit(hs, (ox - 20, oy - 40))
@@ -738,7 +802,9 @@ def draw_ship(surf, ship, ox, oy, t, interior=True, selected=(), hover=None, tar
     vis = crew_sides
     if not interior:   # without a telescope you only see your own boarders
         vis = tuple(s for s in crew_sides if s != ship.side)
-    draw_crew(surf, ship, ox, oy, t, selected, visible_sides=vis)
+    if overlay and interior:
+        draw_room_labels(surf, ship, ox, oy)
+    draw_crew(surf, ship, ox, oy, t, selected, visible_sides=vis, hover_crew=hover_crew)
     draw_nest_basket(surf, ship, ox, oy)
     if overlay:
         draw_room_overlay(surf, ship, ox, oy, interior, hover, targets)
@@ -765,6 +831,6 @@ def room_at(ship, ox, oy, pos):
 
 def crew_at(ship, ox, oy, pos, side='player'):
     for c in ship.crew:
-        if c.alive and c.side == side and abs(ox + c.x - pos[0]) <= 5 and -11 <= (pos[1] - (oy + c.y)) <= 1:
+        if c.alive and c.side == side and abs(ox + c.x - pos[0]) <= 7 and -21 <= (pos[1] - (oy + c.y)) <= 2:
             return c
     return None

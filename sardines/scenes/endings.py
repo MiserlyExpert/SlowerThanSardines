@@ -35,6 +35,7 @@ class GameOverScene(Scene):
                         gfx.Button((W // 2 + 10, 290, 120, 22), "Title Screen", self.title,
                                    key=pygame.K_ESCAPE)]
         audio.play('lose')
+        audio.set_mood('quiet')
 
     def again(self):
         from .title import TitleScene
@@ -85,6 +86,7 @@ class VictoryScene(Scene):
         self.buttons = [gfx.Button((W // 2 - 60, 322, 120, 22), "Title Screen", self.title,
                                    key=pygame.K_RETURN)]
         audio.play('win')
+        audio.set_mood('title')
 
     def title(self):
         from .title import TitleScene

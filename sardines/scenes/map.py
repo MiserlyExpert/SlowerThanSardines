@@ -15,7 +15,7 @@ KIND_TIP = {
     'start': "Where you came in.",
     'event': "Unknown waters. Could be anything. Probably crabs.",
     'distress': "Distress signal! Someone needs help (or wants you to think so).",
-    'port': "A port with a market and a tavern. Nobody asks questions. Nobody pays taxes.",
+    'port': "An island harbor: market, trade, tavern and shipyard. Nobody asks questions. Nobody pays taxes.",
     'exit': "The way onward to the next sea.",
 }
 TRAVEL_TIME = 1.6
@@ -31,7 +31,7 @@ class MapScene(Scene):
         self.facing = 1
         self.wake = []
         self.buttons = [
-            gfx.Button((W - 230, H - 25, 108, 20), "Shipwright [S]", self.shipwright, key=pygame.K_s),
+            gfx.Button((W - 230, H - 25, 108, 20), "Ship & Cargo [S]", self.shipwright, key=pygame.K_s),
             gfx.Button((W - 116, H - 25, 110, 20), "How to Play [H]", self.help, key=pygame.K_h),
         ]
         self._doodles = None
@@ -81,6 +81,7 @@ class MapScene(Scene):
 
     def update(self, dt):
         self.t += dt
+        audio.set_mood('sea')
         self.hover = self.node_at(pygame.mouse.get_pos())
         for w in self.wake:
             w[2] -= dt
@@ -104,6 +105,14 @@ class MapScene(Scene):
         if not self.gs.crew:
             self.gs.cause = 'sober'
             self.app.push(GameOverScene(self.app))
+            return
+        if ev.get('id') == 'port':
+            from .harbor import HarborScene
+            self.app.push(HarborScene(self.app, self.gs.sector.node))
+            if notes:
+                self.app.push(EventScene(self.app, dict(id='portnotes', text="You sail into the harbor.",
+                                                        choices=[dict(text="Tie up at the dock.", out={})]),
+                                         notes=notes))
             return
         self.app.push(EventScene(self.app, ev, notes=notes))
 
@@ -179,6 +188,13 @@ class MapScene(Scene):
                         k0, k1 = (i + off) / steps, min(1, (i + 1 + off) / steps)
                         pygame.draw.line(s, col, (na.x + (nb.x - na.x) * k0, na.y + (nb.y - na.y) * k0),
                                          (na.x + (nb.x - na.x) * k1, na.y + (nb.y - na.y) * k1), 2 if hot else 1)
+        # islands with harbors
+        for nd in sec.nodes:
+            if nd.kind == 'port' and nd.store is None:
+                from .harbor import gen_port
+                nd.store = gen_port(gs)
+            if nd.kind == 'port':
+                self._island(s, nd.x, nd.y, t, nd.idx)
         # waypoints
         for nd in sec.nodes:
             reach = nd.idx in nbrs and not self.travel
@@ -190,6 +206,8 @@ class MapScene(Scene):
             pygame.draw.circle(s, col, (nd.x, nd.y), r)
             if nd.kind == 'port':
                 s.blit(gfx.icon('anchor'), (nd.x - 3, nd.y - 3))
+                if nd.store and 'name' in nd.store:
+                    gfx.text(s, nd.store['name'], nd.x, nd.y + 14, P['ink'], align='center')
             elif nd.kind == 'exit':
                 lbl = "EXIT" if not sec.final else "HMS INSUFFERABLE"
                 gfx.text(s, lbl, min(nd.x, W - 4), nd.y - 18, P['dred'], align='right' if sec.final else 'center')
@@ -210,6 +228,25 @@ class MapScene(Scene):
         gfx.draw_boat(s, int(bx), int(by - 6), self.facing, t)
         self._bars(s, gs, sec, nbrs)
 
+    def _island(self, s, x, y, t, seed):
+        rng = random.Random(seed * 31 + 7)
+        w = rng.randint(30, 40)
+        # shallows, beach, grass
+        pygame.draw.ellipse(s, (150, 196, 200), (x - w // 2 - 6, y - 8, w + 12, 22))
+        pygame.draw.ellipse(s, (226, 204, 150), (x - w // 2, y - 6, w, 16))
+        pygame.draw.ellipse(s, (110, 160, 90), (x - w // 2 + 4, y - 8, w - 8, 10))
+        # a palm tree and two little houses
+        px = x - w // 2 + 6
+        pygame.draw.line(s, P['wood1'], (px, y - 4), (px + 2, y - 16), 2)
+        for a in range(4):
+            ang = -2.8 + a * 0.75 + math.sin(t + a) * 0.08
+            pygame.draw.line(s, (50, 120, 60), (px + 2, y - 16), (px + 2 + math.cos(ang) * 7, y - 15 + math.sin(ang) * 4))
+        for hx, col in ((x + 6, (180, 70, 50)), (x + 13, (70, 90, 140))):
+            pygame.draw.rect(s, (236, 220, 190), (hx - 3, y - 10, 6, 5))
+            pygame.draw.polygon(s, col, [(hx - 4, y - 10), (hx, y - 14), (hx + 4, y - 10)])
+        # dock
+        pygame.draw.line(s, P['wood1'], (x + w // 2 - 4, y + 4), (x + w // 2 + 6, y + 4), 2)
+
     def _bars(self, s, gs, sec, nbrs):
         pygame.draw.rect(s, P['navy'], (0, 0, W, 24))
         pygame.draw.line(s, P['black'], (0, 24), (W, 24))
@@ -220,12 +257,14 @@ class MapScene(Scene):
         pygame.draw.line(s, P['black'], (0, BOTTOM), (W, BOTTOM))
         x = 8
         for c in gs.crew:
-            s.blit(gfx.crew_sprite(c.cls, c.skin), (x, BOTTOM + 7))
-            gfx.bar(s, x - 1, BOTTOM + 20, 10, 2, c.hp / c.max_hp, P['green'] if c.hp > c.max_hp * .35 else P['red'])
+            from .. import people
+            s.blit(people.sprite(c.cls, c.skin, 'stand', 0, 1), (x - 3, BOTTOM + 3))
+            gfx.bar(s, x - 1, BOTTOM + 25, 10, 2, c.hp / c.max_hp, P['green'] if c.hp > c.max_hp * .35 else P['red'])
             x += 14
         days = (sec.node.x - sec.fleet_x) / FLEET_STEP
         tide = "THE ARMADA IS HERE!" if days <= 0 else f"Armada ~{max(1, int(days))} day{'s' if days >= 2 else ''} behind"
-        gfx.text(s, f"Gusto {gs.ship.gusto}   Crew {len(gs.crew)}/8", x + 8, BOTTOM + 6, P['lgrey'])
+        gfx.text(s, f"Hands {gs.ship.gusto}   Crew {len(gs.crew)}/8   Cargo {gs.cargo_used()}/{gs.cargo_cap()}",
+                 x + 8, BOTTOM + 6, P['lgrey'])
         gfx.text(s, tide, x + 8, BOTTOM + 17, P['red'] if days < 2 else P['lgrey'])
         mouse = pygame.mouse.get_pos()
         for b in self.buttons:

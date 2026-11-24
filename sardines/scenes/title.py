@@ -3,7 +3,7 @@ import math
 
 import pygame
 
-from .. import gfx, model, render
+from .. import audio, gfx, model, render
 from ..app import Scene
 from ..config import H, TITLE, VERSION, W
 from ..gfx import P
@@ -38,6 +38,7 @@ class TitleScene(Scene):
 
     def update(self, dt):
         self.t += dt
+        audio.set_mood('title')
         for c in self.ship.crew:
             c.anim += dt
 
@@ -72,15 +73,17 @@ HELP = [
                   "cross, so the Armada gains twice as fast. Reach the far right of each sea to move on."),
     ("BATTLE", "SPACE pauses. Click a cannon (or press 1-4), then click an enemy room to aim. Cannons fire "
                "by themselves when loaded. Right-click a cannon to unpower it."),
-    ("CREW", "Click crew to select (Shift adds, A selects all). Right-click a room to send them; they "
-             "climb ladders and stairs to get there. Crew man stations, repair, fight fires and patch leaks."),
-    ("WATER", "Leaks below the waterline flood fast. Water pours down hatches into the lower decks, drowns "
-              "crew, shorts out systems and makes the ship sluggish. Patch the leak and the pumps catch up."),
-    ("BOARDING", "Buy Grappling Hooks in port. Select crew on your TOP DECK and press Board. They land on "
-                 "the enemy's top deck and must fight their way down. To come home, they climb back up "
-                 "and you press Recall."),
+    ("CREW", "Click crew to select (Shift adds, A selects all). Right-click a room to send them. Crew man "
+             "stations, repair them, fight fires and patch holes in the hull."),
+    ("HANDS", "Your crew's Hands work the stations. Click a station to give it a Hand, right-click to take "
+              "one away. Lose crew and you lose their Hands."),
+    ("BOARDING", "Needs an Armory (install one at a port shipyard). Send crew to your TOP DECK, select "
+                 "them and press Board. They land on the enemy's top deck and fight their way down. "
+                 "Recall brings home anyone standing on the enemy's top deck."),
+    ("PORTS", "Islands on the chart have harbors: buy supplies and cannons, trade goods between ports, "
+              "hire crew, and upgrade any room or fit modules into empty slots."),
     ("TIPS", "Captains belong at the Helm. Drunks belong on the Gun Deck, and in any fistfight. "
-             "Flooding puts out fires. Pirates are everywhere and like nobody."),
+             "Holes in the hull drain it slowly: patch them. Pirates are everywhere and like nobody."),
 ]
 
 

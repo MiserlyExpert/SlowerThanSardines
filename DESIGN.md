@@ -47,6 +47,27 @@ magazine can explode.
 | The Rum Runner | win 20 battles | Tiny, evasive, quick guns |
 | The Damp Mary | defeat a Ghost Ship | Ghost crew, Hullbreaker |
 
+## Rooms: systems and modules
+
+Every room has a mechanic. Systems: Helm, Sails, Gun Deck, Bulwarks, Sick Bay, Crow's Nest.
+Modules (installed into EMPTY slots at a port shipyard, upgradeable to Lv2-3):
+
+| Module | Effect |
+|---|---|
+| Galley | +1 Hand per level; heals the crew after every leg (a Cook doubles it) |
+| Cargo Hold | +6 cargo per level for trade goods |
+| Powder Magazine | Lobbed cannons load 20%/level faster; +1 cannonball/level after wins; explodes if it burns |
+| Armory | Enables boarding; +25% melee/level; shorter boarding cooldown |
+| The Brig | 40%/level chance to take a prisoner after a win: ransom or recruit |
+| Chart Room | Escape charts 20%/level faster; the Armada gains 10%/level less per leg |
+| The Bar | +1 Rum per level per leg |
+| The Crypt | Fallen crew have 30%/level chance to return as ghosts |
+
+## Hands
+
+Stations are worked by Hands, not reactor power: each crew member brings 2-4 Hands (a drunk brings
+2, a brute 4). Assign them like FTL power. Crew who die or are away boarding take their Hands with them.
+
 ## Systems
 
 | System | Effect |
@@ -60,9 +81,7 @@ magazine can explode.
 
 ## Hazards
 
-- **Leaks.** Rooms below the waterline flood at 11%/s, rooms above it at 4%/s. Water flows through
-  doorways, pours down hatches, drowns crew above 65%, knocks a bar off a flooded system, and slows
-  the ship. Patched leaks are pumped out slowly.
+- **Holes in the hull.** A breached room costs 1 hull every 12 seconds until crew patch it.
 - **Fire.** Spreads, burns systems and crew, and is put out by flooding. A burning powder magazine explodes (-4 hull).
 
 ## Boarding
